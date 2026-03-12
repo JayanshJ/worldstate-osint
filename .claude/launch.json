@@ -1,0 +1,33 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "--port", "3001"],
+      "cwd": "frontend",
+      "port": 3001
+    },
+    {
+      "name": "api",
+      "runtimeExecutable": "uvicorn",
+      "runtimeArgs": ["app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"],
+      "cwd": "backend",
+      "port": 8000
+    },
+    {
+      "name": "ingestion-worker",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "workers.ingestion_runner"],
+      "cwd": "backend",
+      "port": 8001
+    },
+    {
+      "name": "cluster-worker",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "workers.cluster_runner"],
+      "cwd": "backend",
+      "port": 8002
+    }
+  ]
+}
