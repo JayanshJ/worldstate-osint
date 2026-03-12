@@ -347,15 +347,22 @@ export function SupplyChainView() {
 
             {/* Loading state */}
             {(loading || analysing) && (
-              <div className="flex-1 flex flex-col items-center justify-center gap-3">
+              <div className="flex-1 flex flex-col items-center justify-center gap-4">
                 <Loader2 size={28} className="animate-spin text-terminal-accent" />
-                <div className="text-center">
+                <div className="text-center space-y-1">
                   <p className="font-mono text-sm text-terminal-text">
-                    {analysing ? 'Downloading from SEC EDGAR…' : 'Loading…'}
+                    {analysing ? 'Fetching SEC EDGAR filing…' : 'Loading cached data…'}
                   </p>
-                  <p className="font-mono text-[10px] text-terminal-dim mt-1">
-                    {analysing ? 'LLM extracting supply chain relationships (~20s)' : ''}
-                  </p>
+                  {analysing && (
+                    <div className="font-mono text-[9px] text-terminal-dim space-y-0.5 mt-2">
+                      <p className="text-terminal-accent/70">① Resolving CIK from SEC ticker map</p>
+                      <p className="text-terminal-dim/60">② Downloading 10-K from EDGAR archives</p>
+                      <p className="text-terminal-dim/60">③ Stripping HTML / iXBRL → plain text</p>
+                      <p className="text-terminal-dim/60">④ LLM extracting relationships (3 chunks)</p>
+                      <p className="text-terminal-dim/60">⑤ Saving to database</p>
+                      <p className="text-terminal-dim/30 mt-2">~20–40 s · 100% free via sec.gov</p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -423,9 +430,26 @@ export function SupplyChainView() {
 
             {/* Results */}
             {!loading && !analysing && !error && company && edges.length === 0 && (
-              <div className="flex-1 flex flex-col items-center justify-center gap-2 text-terminal-dim/40 font-mono text-xs">
-                <p>No supply chain relationships found in the 10-K for {company.ticker}.</p>
-                <p className="text-[9px]">The filing may not disclose named suppliers or customers.</p>
+              <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center px-8">
+                <AlertTriangle size={28} className="text-yellow-400/50" />
+                <div>
+                  <p className="font-mono text-sm text-terminal-text mb-1">
+                    No relationships extracted for <span className="text-terminal-accent">{company.ticker}</span>
+                  </p>
+                  <p className="font-mono text-[10px] text-terminal-dim mb-4 max-w-xs leading-relaxed">
+                    The filing may use a format that wasn't fully parsed, or the 10-K
+                    doesn't name specific suppliers/customers. Try re-analysing — the
+                    improved iXBRL parser often catches more on retry.
+                  </p>
+                  <button
+                    onClick={() => analyse(company.ticker)}
+                    disabled={analysing}
+                    className="flex items-center gap-2 mx-auto px-4 py-2 bg-terminal-accent/15 text-terminal-accent border border-terminal-accent/30 rounded-sm font-mono text-xs tracking-widest hover:bg-terminal-accent/25 transition-colors disabled:opacity-50"
+                  >
+                    <RefreshCw size={12} className={analysing ? 'animate-spin' : ''} />
+                    RE-ANALYSE {company.ticker}
+                  </button>
+                </div>
               </div>
             )}
 
