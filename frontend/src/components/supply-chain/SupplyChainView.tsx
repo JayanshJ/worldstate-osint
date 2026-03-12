@@ -16,14 +16,15 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Search, Loader2, AlertTriangle, X,
-  GitBranch, Table2, Trash2, RefreshCw,
+  GitBranch, Table2, Trash2, RefreshCw, BarChart2,
 } from 'lucide-react'
 import { api, type SCCompany, type SCEdge, type SCSearchResult } from '@/lib/api'
 import { SCGraph }  from './SCGraph'
 import { SCTable }  from './SCTable'
+import { SCIntel }  from './SCIntel'
 import { cn }       from '@/lib/utils'
 
-type ViewTab = 'graph' | 'table'
+type ViewTab = 'graph' | 'table' | 'intel'
 
 // ─── Risk helpers ─────────────────────────────────────────────────────────
 function riskLevel(e: SCEdge) {
@@ -118,7 +119,7 @@ function EvidenceDrawer({ edge, onClose }: { edge: SCEdge; onClose: () => void }
         {/* as_of_date */}
         {edge.as_of_date && (
           <div className="text-[9px] font-mono text-terminal-dim/50">
-            Source: SEC 10-K filed {edge.as_of_date}
+            As of {edge.as_of_date}
           </div>
         )}
       </div>
@@ -149,7 +150,7 @@ function RiskBar({ edges }: { edges: SCEdge[] }) {
         </div>
       ))}
       <div className="ml-auto text-[8px] font-mono text-terminal-dim/40">
-        Source: SEC EDGAR · Free
+        Wikipedia · SEC · Model knowledge
       </div>
     </div>
   )
@@ -201,8 +202,8 @@ export function SupplyChainView() {
     }, 250)
   }
 
-  async function load(ticker: string) {
-    setInput(ticker)         // ← fix: always sync input with loaded ticker
+  async function load(ticker: string, autoAnalyseOn404 = true) {
+    setInput(ticker)
     setShowDropdown(false)
     setLoading(true)
     setError(null)
@@ -211,15 +212,18 @@ export function SupplyChainView() {
       const data = await api.splc.get(ticker)
       setCompany(data.company)
       setEdges(data.edges)
+      setLoading(false)
     } catch (e: unknown) {
       const msg = (e as { message?: string })?.message ?? ''
-      if (msg.includes('404')) {
+      setLoading(false)
+      if (msg.includes('404') && autoAnalyseOn404) {
+        // Not in cache — immediately kick off analysis
+        await analyse(ticker)
+      } else if (msg.includes('404')) {
         setCompany(null); setEdges([]); setError('not_found')
       } else {
         setError(String(e))
       }
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -281,10 +285,10 @@ export function SupplyChainView() {
   const busy = loading || analysing
 
   return (
-    <div className="flex h-full w-full bg-terminal-bg overflow-hidden">
+    <div className="flex h-full w-full bg-terminal-bg overflow-hidden relative">
 
       {/* ── Left sidebar: history ─────────────────────────────────────── */}
-      <div className="w-[180px] flex-shrink-0 border-r border-terminal-border flex flex-col bg-terminal-surface/30">
+      <div className="w-[180px] flex-shrink-0 border-r border-terminal-border flex flex-col bg-terminal-surface/30 z-10">
         <div className="px-3 py-2.5 border-b border-terminal-border">
           <span className="text-[9px] font-mono text-terminal-dim tracking-widest">ANALYSED</span>
         </div>
@@ -385,6 +389,7 @@ export function SupplyChainView() {
               {([
                 { id: 'graph' as ViewTab, icon: GitBranch, label: 'GRAPH' },
                 { id: 'table' as ViewTab, icon: Table2,    label: 'TABLE' },
+                { id: 'intel' as ViewTab, icon: BarChart2, label: 'INTEL' },
               ]).map(({ id, icon: Icon, label }) => (
                 <button
                   key={id}
@@ -431,37 +436,38 @@ export function SupplyChainView() {
         <div className="flex flex-1 min-h-0 overflow-hidden">
           <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
 
-            {/* Loading state */}
+            {/* Loading state — centered over full screen */}
             {busy && (
-              <div className="flex-1 flex flex-col items-center justify-center gap-4">
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 z-20 bg-terminal-bg/80 backdrop-blur-sm">
                 <Loader2 size={28} className="animate-spin text-terminal-accent" />
                 <div className="text-center space-y-1">
                   <p className="font-mono text-sm text-terminal-text">
-                    {analysing ? 'Fetching SEC EDGAR filing…' : 'Loading cached data…'}
+                    {analysing ? 'Analysing supply chain…' : 'Loading…'}
                   </p>
                   {analysing && (
                     <div className="font-mono text-[9px] text-terminal-dim space-y-0.5 mt-2">
-                      <p className="text-terminal-accent/70">① Resolving CIK from SEC ticker map</p>
-                      <p className="text-terminal-dim/60">② Downloading 10-K from EDGAR archives</p>
-                      <p className="text-terminal-dim/60">③ Stripping HTML / iXBRL → plain text</p>
-                      <p className="text-terminal-dim/60">④ LLM extracting relationships (3 chunks)</p>
-                      <p className="text-terminal-dim/60">⑤ Saving to database</p>
-                      <p className="text-terminal-dim/30 mt-2">~20–40 s · 100% free via sec.gov</p>
+                      <p className="text-terminal-accent/70">① Resolving company via SEC EDGAR</p>
+                      <p className="text-terminal-dim/60">② Fetching Wikipedia supply chain article</p>
+                      <p className="text-terminal-dim/60">③ Fetching Wikipedia company article</p>
+                      <p className="text-terminal-dim/60">④ Fetching SEC 10-K for context</p>
+                      <p className="text-terminal-dim/60">⑤ LLM extracting all named relationships</p>
+                      <p className="text-terminal-dim/60">⑥ Saving to database</p>
+                      <p className="text-terminal-dim/30 mt-2">~20–45 s · Wikipedia + SEC + model knowledge</p>
                     </div>
                   )}
                 </div>
               </div>
             )}
 
-            {/* Error: not yet analysed (fallback if auto-analyse was skipped) */}
+            {/* Error: not yet analysed fallback */}
             {!busy && error === 'not_found' && input && (
-              <div className="flex-1 flex flex-col items-center justify-center gap-4">
-                <div className="text-center">
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 z-10 pointer-events-none">
+                <div className="text-center pointer-events-auto">
                   <p className="font-mono text-sm text-terminal-text mb-1">
                     Not yet analysed: <span className="text-terminal-accent">{input}</span>
                   </p>
                   <p className="font-mono text-[10px] text-terminal-dim mb-4">
-                    Pull the latest 10-K from SEC EDGAR (free)
+                    Sources: Wikipedia · SEC 10-K · model knowledge
                   </p>
                   <button
                     onClick={() => analyse(input)}
@@ -471,7 +477,7 @@ export function SupplyChainView() {
                     ANALYSE {input}
                   </button>
                   <p className="font-mono text-[9px] text-terminal-dim/40 mt-3">
-                    Downloads 10-K · LLM extracts supply chain · ~20–40s
+                    Wikipedia + SEC 10-K + model knowledge · ~15–30s
                   </p>
                 </div>
               </div>
@@ -479,38 +485,40 @@ export function SupplyChainView() {
 
             {/* Other error */}
             {!busy && error && error !== 'not_found' && (
-              <div className="flex-1 flex items-center justify-center">
-                <div className="flex items-center gap-2 text-red-400 font-mono text-sm">
+              <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+                <div className="flex items-center gap-2 text-red-400 font-mono text-sm pointer-events-auto">
                   <AlertTriangle size={16} />
                   {error}
                 </div>
               </div>
             )}
 
-            {/* Empty state */}
+            {/* Empty state — centered over full screen */}
             {!busy && !error && !company && (
-              <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center px-8">
-                <GitBranch size={36} className="text-terminal-dim/20" />
-                <div>
-                  <p className="font-mono text-sm text-terminal-text mb-1">Supply Chain Analysis</p>
-                  <p className="font-mono text-[10px] text-terminal-dim max-w-xs leading-relaxed">
-                    Enter any ticker to map its supplier and customer relationships,
-                    extracted from SEC 10-K filings for free.
-                  </p>
-                </div>
-                {prevTickers.length > 0 && (
-                  <div className="flex flex-wrap gap-2 justify-center mt-2">
-                    {prevTickers.slice(0, 6).map(c => (
-                      <button
-                        key={c.ticker}
-                        onClick={() => load(c.ticker)}
-                        className="text-[9px] font-mono px-2 py-1 border border-terminal-border rounded-sm text-terminal-dim hover:text-terminal-accent hover:border-terminal-accent/40 transition-colors"
-                      >
-                        {c.ticker}
-                      </button>
-                    ))}
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-center px-8 z-10 pointer-events-none">
+                <div className="pointer-events-auto flex flex-col items-center gap-4">
+                  <GitBranch size={36} className="text-terminal-dim/20" />
+                  <div>
+                    <p className="font-mono text-sm text-terminal-text mb-1">Supply Chain Analysis</p>
+                    <p className="font-mono text-[10px] text-terminal-dim max-w-xs leading-relaxed">
+                      Enter any ticker to map named suppliers, customers and competitors
+                      using Wikipedia, SEC filings, and model knowledge.
+                    </p>
                   </div>
-                )}
+                  {prevTickers.length > 0 && (
+                    <div className="flex flex-wrap gap-2 justify-center mt-2">
+                      {prevTickers.slice(0, 6).map(c => (
+                        <button
+                          key={c.ticker}
+                          onClick={() => load(c.ticker)}
+                          className="text-[9px] font-mono px-2 py-1 border border-terminal-border rounded-sm text-terminal-dim hover:text-terminal-accent hover:border-terminal-accent/40 transition-colors"
+                        >
+                          {c.ticker}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -523,9 +531,9 @@ export function SupplyChainView() {
                     No relationships extracted for <span className="text-terminal-accent">{company.ticker}</span>
                   </p>
                   <p className="font-mono text-[10px] text-terminal-dim mb-4 max-w-xs leading-relaxed">
-                    The filing may use a format that wasn't fully parsed, or the 10-K
-                    doesn't name specific suppliers/customers. Try re-analysing — the
-                    improved iXBRL parser often catches more on retry.
+                    No named suppliers or customers were found. The 10-K may use generic
+                    language ("contract manufacturers") without naming companies. Re-analyse
+                    to try the updated extraction prompt.
                   </p>
                   <button
                     onClick={() => analyse(company.ticker)}
@@ -540,18 +548,20 @@ export function SupplyChainView() {
             )}
 
             {!busy && !error && company && edges.length > 0 && (
-              <div className="flex-1 overflow-auto">
+              <div className="flex-1 overflow-hidden">
                 {tab === 'graph' ? (
-                  <div className="p-6">
+                  <div className="h-full w-full">
                     <SCGraph
                       ticker={company.ticker}
-                      legalName={company.legal_name}
+                      legalName={company.legal_name ?? company.ticker}
                       edges={edges}
                       onNodeClick={setSelected}
                     />
                   </div>
-                ) : (
+                ) : tab === 'table' ? (
                   <SCTable edges={edges} onRowClick={setSelected} />
+                ) : (
+                  <SCIntel company={company} edges={edges} />
                 )}
               </div>
             )}

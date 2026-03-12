@@ -11,7 +11,6 @@ GET  /api/v1/splc/{ticker}/graph   — return data in force-graph node/edge form
 
 import logging
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,9 +18,8 @@ from sqlalchemy.orm import selectinload
 
 from app.core.database import AsyncSessionLocal
 from app.intelligence.splc_extractor import (
-    HEADERS,
-    _ticker_cache,
     extract_supply_chain,
+    search_companies_by_name,
 )
 from app.models.supply_chain import SCCompany, SCEdge
 
@@ -84,66 +82,11 @@ async def search_companies(q: str = Query(..., min_length=1)):
     """
     Search SEC EDGAR company list by name or ticker.
     Returns up to 10 matches as {ticker, name, cik} objects.
-    Uses the in-process ticker cache (loaded on first SPLC analysis).
-    Falls back to a live EDGAR fetch if cache is empty.
     """
-    q = q.strip()
-    global _ticker_cache
-
-    # Populate cache if needed
-    if not _ticker_cache:
-        try:
-            async with httpx.AsyncClient() as client:
-                r = await client.get(
-                    "https://www.sec.gov/files/company_tickers.json",
-                    headers=HEADERS, timeout=20,
-                )
-                r.raise_for_status()
-                data = r.json()
-                for v in data.values():
-                    _ticker_cache[v["ticker"].upper()] = str(v["cik_str"])
-                # Also keep name→ticker mapping in a local variable for this call
-                name_map = {v["title"].lower(): (v["ticker"].upper(), str(v["cik_str"]), v["title"]) for v in data.values()}
-        except Exception as e:
-            raise HTTPException(status_code=503, detail=f"Could not reach SEC EDGAR: {e}")
-    else:
-        # Rebuild name_map from the raw JSON (cached separately on repeat calls)
-        name_map = {}
-        try:
-            async with httpx.AsyncClient() as client:
-                r = await client.get(
-                    "https://www.sec.gov/files/company_tickers.json",
-                    headers=HEADERS, timeout=20,
-                )
-                r.raise_for_status()
-                for v in r.json().values():
-                    name_map[v["title"].lower()] = (v["ticker"].upper(), str(v["cik_str"]), v["title"])
-        except Exception:
-            # Fallback: just search by ticker prefix from cache
-            name_map = {}
-
-    q_lower = q.lower()
-    q_upper = q.upper()
-    results = []
-
-    # 1. Exact ticker match first
-    if q_upper in _ticker_cache:
-        cik = _ticker_cache[q_upper]
-        results.append({"ticker": q_upper, "name": q_upper, "cik": cik})
-
-    # 2. Name or ticker prefix/substring matches
-    for name_lower, (ticker, cik, title) in name_map.items():
-        if len(results) >= 10:
-            break
-        if ticker == q_upper:
-            # Already added above
-            if not any(r["ticker"] == ticker for r in results):
-                results.append({"ticker": ticker, "name": title, "cik": cik})
-        elif q_lower in name_lower or name_lower.startswith(q_lower):
-            if not any(r["ticker"] == ticker for r in results):
-                results.append({"ticker": ticker, "name": title, "cik": cik})
-
-    return results[:10]
+    try:
+        return await search_companies_by_name(q.strip())
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Could not reach SEC EDGAR: {exc}")
 
 
 @router.get("/{ticker}")
