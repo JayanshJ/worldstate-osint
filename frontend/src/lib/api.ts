@@ -78,6 +78,7 @@ export const api = {
 
   splc: {
     list:    ()             => req<SCCompany[]>(`${BASE}/splc/`),
+    search:  (q: string)   => req<SCSearchResult[]>(`${BASE}/splc/search`, { q }),
     get:     (ticker: string) =>
       req<{ company: SCCompany; edges: SCEdge[] }>(`${BASE}/splc/${ticker}`),
     analyse: (ticker: string) =>
@@ -161,6 +162,12 @@ export interface AlertFiring {
   cluster_id: string
   fired_at:   string
   payload:    Record<string, unknown>
+}
+
+export interface SCSearchResult {
+  ticker: string
+  name:   string
+  cik:    string
 }
 
 export interface SCCompany {

@@ -12,13 +12,13 @@
  *   5. Click any node / row → evidence drawer slides in from right
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Search, Loader2, AlertTriangle, X, ChevronRight,
+  Search, Loader2, AlertTriangle, X,
   GitBranch, Table2, Trash2, RefreshCw,
 } from 'lucide-react'
-import { api, type SCCompany, type SCEdge } from '@/lib/api'
+import { api, type SCCompany, type SCEdge, type SCSearchResult } from '@/lib/api'
 import { SCGraph }  from './SCGraph'
 import { SCTable }  from './SCTable'
 import { cn }       from '@/lib/utils'
@@ -157,22 +157,53 @@ function RiskBar({ edges }: { edges: SCEdge[] }) {
 
 // ─── Main component ───────────────────────────────────────────────────────
 export function SupplyChainView() {
-  const [input,       setInput]       = useState('')
-  const [loading,     setLoading]     = useState(false)
-  const [error,       setError]       = useState<string | null>(null)
-  const [company,     setCompany]     = useState<SCCompany | null>(null)
-  const [edges,       setEdges]       = useState<SCEdge[]>([])
-  const [tab,         setTab]         = useState<ViewTab>('graph')
-  const [selected,    setSelected]    = useState<SCEdge | null>(null)
-  const [analysing,   setAnalysing]   = useState(false)
-  const [prevTickers, setPrevTickers] = useState<SCCompany[]>([])
+  const [input,        setInput]        = useState('')
+  const [suggestions,  setSuggestions]  = useState<SCSearchResult[]>([])
+  const [showDropdown, setShowDropdown] = useState(false)
+  const [loading,      setLoading]      = useState(false)
+  const [error,        setError]        = useState<string | null>(null)
+  const [company,      setCompany]      = useState<SCCompany | null>(null)
+  const [edges,        setEdges]        = useState<SCEdge[]>([])
+  const [tab,          setTab]          = useState<ViewTab>('graph')
+  const [selected,     setSelected]     = useState<SCEdge | null>(null)
+  const [analysing,    setAnalysing]    = useState(false)
+  const [prevTickers,  setPrevTickers]  = useState<SCCompany[]>([])
+  const inputRef  = useRef<HTMLInputElement>(null)
+  const searchRef = useRef<HTMLDivElement>(null)
 
-  // Load previously analysed tickers on mount
   useEffect(() => {
     api.splc.list().then(setPrevTickers).catch(() => {})
   }, [])
 
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setShowDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  // Debounced search-as-you-type
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  function handleInputChange(val: string) {
+    setInput(val)
+    if (searchTimer.current) clearTimeout(searchTimer.current)
+    if (val.trim().length < 1) { setSuggestions([]); setShowDropdown(false); return }
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const results = await api.splc.search(val.trim())
+        setSuggestions(results)
+        setShowDropdown(results.length > 0)
+      } catch { /* backend not running */ }
+    }, 250)
+  }
+
   async function load(ticker: string) {
+    setInput(ticker)         // ← fix: always sync input with loaded ticker
+    setShowDropdown(false)
     setLoading(true)
     setError(null)
     setSelected(null)
@@ -181,11 +212,9 @@ export function SupplyChainView() {
       setCompany(data.company)
       setEdges(data.edges)
     } catch (e: unknown) {
-      const status = (e as { message?: string })?.message ?? ''
-      if (status.includes('404')) {
-        setCompany(null)
-        setEdges([])
-        setError('not_found')
+      const msg = (e as { message?: string })?.message ?? ''
+      if (msg.includes('404')) {
+        setCompany(null); setEdges([]); setError('not_found')
       } else {
         setError(String(e))
       }
@@ -195,13 +224,14 @@ export function SupplyChainView() {
   }
 
   async function analyse(ticker: string) {
+    setInput(ticker)
+    setShowDropdown(false)
     setAnalysing(true)
     setError(null)
     try {
       await api.splc.analyse(ticker)
       await load(ticker)
-      const updated = await api.splc.list()
-      setPrevTickers(updated)
+      setPrevTickers(await api.splc.list())
     } catch (e: unknown) {
       setError(String(e))
     } finally {
@@ -209,23 +239,46 @@ export function SupplyChainView() {
     }
   }
 
+  // Smart submit: load from cache; if not found, immediately analyse
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const t = input.trim().toUpperCase()
     if (!t) return
     setInput(t)
-    await load(t)
+    setShowDropdown(false)
+    setLoading(true)
+    setError(null)
+    setSelected(null)
+    try {
+      const data = await api.splc.get(t)
+      setCompany(data.company); setEdges(data.edges)
+      setLoading(false)
+    } catch (e: unknown) {
+      const msg = (e as { message?: string })?.message ?? ''
+      setLoading(false)
+      if (msg.includes('404')) {
+        // Auto-trigger analysis if not cached
+        await analyse(t)
+      } else {
+        setError(String(e))
+      }
+    }
+  }
+
+  function pickSuggestion(s: SCSearchResult) {
+    setInput(s.ticker)
+    setSuggestions([])
+    setShowDropdown(false)
+    load(s.ticker)
   }
 
   async function handleDelete(ticker: string) {
     await api.splc.remove(ticker)
-    const updated = await api.splc.list()
-    setPrevTickers(updated)
-    if (company?.ticker === ticker) {
-      setCompany(null)
-      setEdges([])
-    }
+    setPrevTickers(await api.splc.list())
+    if (company?.ticker === ticker) { setCompany(null); setEdges([]) }
   }
+
+  const busy = loading || analysing
 
   return (
     <div className="flex h-full w-full bg-terminal-bg overflow-hidden">
@@ -233,14 +286,12 @@ export function SupplyChainView() {
       {/* ── Left sidebar: history ─────────────────────────────────────── */}
       <div className="w-[180px] flex-shrink-0 border-r border-terminal-border flex flex-col bg-terminal-surface/30">
         <div className="px-3 py-2.5 border-b border-terminal-border">
-          <span className="text-[9px] font-mono text-terminal-dim tracking-widest">
-            ANALYSED
-          </span>
+          <span className="text-[9px] font-mono text-terminal-dim tracking-widest">ANALYSED</span>
         </div>
         <div className="flex-1 overflow-y-auto scrollbar-thin">
           {prevTickers.length === 0 && (
             <p className="text-[9px] font-mono text-terminal-dim/40 p-3 leading-relaxed">
-              No tickers yet. Enter a ticker to analyse.
+              No tickers yet.
             </p>
           )}
           {prevTickers.map(c => (
@@ -252,15 +303,15 @@ export function SupplyChainView() {
               )}
               onClick={() => load(c.ticker)}
             >
-              <div>
+              <div className="min-w-0">
                 <div className="text-[10px] font-mono font-bold text-terminal-text">{c.ticker}</div>
-                <div className="text-[8px] font-mono text-terminal-dim/60 truncate max-w-[110px]">
+                <div className="text-[8px] font-mono text-terminal-dim/60 truncate">
                   {c.legal_name ?? c.ticker}
                 </div>
               </div>
               <button
                 onClick={ev => { ev.stopPropagation(); handleDelete(c.ticker) }}
-                className="opacity-0 group-hover:opacity-100 text-terminal-dim hover:text-red-400 transition-all"
+                className="opacity-0 group-hover:opacity-100 text-terminal-dim hover:text-red-400 transition-all flex-shrink-0 ml-1"
               >
                 <Trash2 size={10} />
               </button>
@@ -272,30 +323,65 @@ export function SupplyChainView() {
       {/* ── Main area ─────────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
-        {/* Search + controls bar */}
+        {/* ── Search bar ── */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-terminal-border bg-terminal-surface/20 flex-shrink-0">
-          <form onSubmit={handleSubmit} className="flex items-center gap-2 flex-1 max-w-[320px]">
-            <div className="relative flex-1">
-              <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-terminal-dim" />
+
+          {/* Search input + dropdown */}
+          <form onSubmit={handleSubmit} className="flex items-center gap-2 flex-1" ref={searchRef}>
+            <div className="relative flex-1 max-w-[420px]">
+              <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-terminal-dim pointer-events-none" />
               <input
+                ref={inputRef}
                 value={input}
-                onChange={e => setInput(e.target.value.toUpperCase())}
-                placeholder="Ticker  e.g. AAPL"
-                className="w-full pl-8 pr-3 py-1.5 bg-terminal-bg border border-terminal-border rounded-sm font-mono text-xs text-terminal-text placeholder:text-terminal-dim/40 focus:outline-none focus:border-terminal-accent/60 tracking-widest uppercase"
+                onChange={e => handleInputChange(e.target.value)}
+                onFocus={() => suggestions.length > 0 && setShowDropdown(true)}
+                placeholder="Ticker or company name — e.g. AAPL or Apple"
+                autoComplete="off"
+                className="w-full pl-8 pr-3 py-1.5 bg-terminal-bg border border-terminal-border rounded-sm font-mono text-xs text-terminal-text placeholder:text-terminal-dim/40 focus:outline-none focus:border-terminal-accent/60"
               />
+              {/* Autocomplete dropdown */}
+              <AnimatePresence>
+                {showDropdown && suggestions.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.1 }}
+                    className="absolute top-full left-0 right-0 mt-0.5 bg-terminal-surface border border-terminal-border rounded-sm shadow-lg z-50 overflow-hidden"
+                  >
+                    {suggestions.map(s => (
+                      <button
+                        key={s.ticker}
+                        type="button"
+                        onClick={() => pickSuggestion(s)}
+                        className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-terminal-muted/40 transition-colors"
+                      >
+                        <span className="text-[11px] font-mono font-bold text-terminal-accent w-14 flex-shrink-0">{s.ticker}</span>
+                        <span className="text-[10px] font-mono text-terminal-dim truncate">{s.name}</span>
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
+
+            {/* Analyse button — primary action */}
             <button
               type="submit"
-              disabled={loading || analysing}
-              className="px-3 py-1.5 text-[9px] font-mono tracking-widest bg-terminal-accent/15 text-terminal-accent border border-terminal-accent/30 rounded-sm hover:bg-terminal-accent/25 transition-colors disabled:opacity-50"
+              disabled={busy}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[9px] font-mono tracking-widest bg-terminal-accent/15 text-terminal-accent border border-terminal-accent/30 rounded-sm hover:bg-terminal-accent/25 transition-colors disabled:opacity-50 flex-shrink-0"
             >
-              {loading ? <Loader2 size={11} className="animate-spin" /> : 'LOAD'}
+              {busy
+                ? <Loader2 size={11} className="animate-spin" />
+                : <GitBranch size={11} />
+              }
+              {analysing ? 'ANALYSING…' : loading ? 'LOADING…' : 'ANALYSE'}
             </button>
           </form>
 
-          {/* View tabs */}
+          {/* View tabs — shown when data is loaded */}
           {company && (
-            <div className="flex items-center gap-1 ml-4">
+            <div className="flex items-center gap-1">
               {([
                 { id: 'graph' as ViewTab, icon: GitBranch, label: 'GRAPH' },
                 { id: 'table' as ViewTab, icon: Table2,    label: 'TABLE' },
@@ -317,19 +403,19 @@ export function SupplyChainView() {
             </div>
           )}
 
-          {/* Company info badge */}
+          {/* Company badge + re-analyse */}
           {company && (
             <div className="flex items-center gap-2 ml-auto">
               <div className="text-right">
                 <div className="text-[11px] font-mono font-bold text-terminal-text">{company.ticker}</div>
-                <div className="text-[8px] font-mono text-terminal-dim/60">
-                  {company.sector?.slice(0, 30) ?? ''}
+                <div className="text-[8px] font-mono text-terminal-dim/60 max-w-[150px] truncate">
+                  {company.legal_name ?? company.sector ?? ''}
                 </div>
               </div>
               <button
                 onClick={() => analyse(company.ticker)}
-                disabled={analysing}
-                title="Re-analyse (fetches latest 10-K)"
+                disabled={busy}
+                title="Re-analyse from latest 10-K"
                 className="text-terminal-dim hover:text-terminal-accent transition-colors disabled:opacity-50"
               >
                 <RefreshCw size={12} className={analysing ? 'animate-spin' : ''} />
@@ -346,7 +432,7 @@ export function SupplyChainView() {
           <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
 
             {/* Loading state */}
-            {(loading || analysing) && (
+            {busy && (
               <div className="flex-1 flex flex-col items-center justify-center gap-4">
                 <Loader2 size={28} className="animate-spin text-terminal-accent" />
                 <div className="text-center space-y-1">
@@ -367,15 +453,15 @@ export function SupplyChainView() {
               </div>
             )}
 
-            {/* Error: not yet analysed */}
-            {!loading && !analysing && error === 'not_found' && input && (
+            {/* Error: not yet analysed (fallback if auto-analyse was skipped) */}
+            {!busy && error === 'not_found' && input && (
               <div className="flex-1 flex flex-col items-center justify-center gap-4">
                 <div className="text-center">
                   <p className="font-mono text-sm text-terminal-text mb-1">
-                    No data for <span className="text-terminal-accent">{input}</span>
+                    Not yet analysed: <span className="text-terminal-accent">{input}</span>
                   </p>
                   <p className="font-mono text-[10px] text-terminal-dim mb-4">
-                    Analyse this ticker using the free SEC EDGAR API
+                    Pull the latest 10-K from SEC EDGAR (free)
                   </p>
                   <button
                     onClick={() => analyse(input)}
@@ -385,14 +471,14 @@ export function SupplyChainView() {
                     ANALYSE {input}
                   </button>
                   <p className="font-mono text-[9px] text-terminal-dim/40 mt-3">
-                    Downloads latest 10-K from sec.gov · 100% free
+                    Downloads 10-K · LLM extracts supply chain · ~20–40s
                   </p>
                 </div>
               </div>
             )}
 
             {/* Other error */}
-            {!loading && !analysing && error && error !== 'not_found' && (
+            {!busy && error && error !== 'not_found' && (
               <div className="flex-1 flex items-center justify-center">
                 <div className="flex items-center gap-2 text-red-400 font-mono text-sm">
                   <AlertTriangle size={16} />
@@ -402,7 +488,7 @@ export function SupplyChainView() {
             )}
 
             {/* Empty state */}
-            {!loading && !analysing && !error && !company && (
+            {!busy && !error && !company && (
               <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center px-8">
                 <GitBranch size={36} className="text-terminal-dim/20" />
                 <div>
@@ -429,7 +515,7 @@ export function SupplyChainView() {
             )}
 
             {/* Results */}
-            {!loading && !analysing && !error && company && edges.length === 0 && (
+            {!busy && !error && company && edges.length === 0 && (
               <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center px-8">
                 <AlertTriangle size={28} className="text-yellow-400/50" />
                 <div>
@@ -453,7 +539,7 @@ export function SupplyChainView() {
               </div>
             )}
 
-            {!loading && !analysing && !error && company && edges.length > 0 && (
+            {!busy && !error && company && edges.length > 0 && (
               <div className="flex-1 overflow-auto">
                 {tab === 'graph' ? (
                   <div className="p-6">
