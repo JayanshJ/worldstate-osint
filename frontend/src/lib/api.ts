@@ -75,6 +75,17 @@ export const api = {
     list:    ()  => req<MarketStrategy[]>(`${BASE}/strategies/`),
     refresh: ()  => post<{ generated: number; ok: boolean }>(`${BASE}/strategies/refresh`, {}),
   },
+
+  splc: {
+    list:    ()             => req<SCCompany[]>(`${BASE}/splc/`),
+    get:     (ticker: string) =>
+      req<{ company: SCCompany; edges: SCEdge[] }>(`${BASE}/splc/${ticker}`),
+    analyse: (ticker: string) =>
+      post<{ status: string; company: SCCompany; edges_created: number }>(`${BASE}/splc/${ticker}`, {}),
+    remove:  (ticker: string) => del(`${BASE}/splc/${ticker}`),
+    graph:   (ticker: string) =>
+      req<{ nodes: SCNode[]; links: SCLink[]; company: SCCompany }>(`${BASE}/splc/${ticker}/graph`),
+  },
 }
 
 // ─── Extra types ───────────────────────────────────────────────────────────
@@ -150,6 +161,57 @@ export interface AlertFiring {
   cluster_id: string
   fired_at:   string
   payload:    Record<string, unknown>
+}
+
+export interface SCCompany {
+  id:               string
+  ticker:           string
+  legal_name:       string | null
+  sector:           string | null
+  sic_code:         string | null
+  hq_country:       string | null
+  last_filing_date: string | null
+}
+
+export interface SCEdge {
+  id:                string
+  entity_name:       string
+  entity_ticker:     string | null
+  direction:         'UPSTREAM' | 'DOWNSTREAM' | 'COMPETITOR'
+  relationship_type: string | null
+  tier:              number | null
+  pct_revenue:       number | null
+  pct_cogs:          number | null
+  sole_source:       boolean
+  disclosure_type:   'DISCLOSED' | 'ESTIMATED' | 'INFERRED' | null
+  confidence:        number | null
+  evidence:          string | null
+  hq_country:        string | null
+  as_of_date:        string | null
+}
+
+export interface SCNode {
+  id:              string
+  label:           string
+  type:            string
+  tier:            number | null
+  hq_country:      string | null
+  exposure:        number
+  sole_source:     boolean
+  disclosure_type: string | null
+  confidence:      number
+  risk:            'HIGH' | 'MEDIUM' | 'LOW'
+  sector:          string | null
+}
+
+export interface SCLink {
+  source:            string
+  target:            string
+  direction:         string
+  relationship_type: string | null
+  pct_revenue:       number | null
+  pct_cogs:          number | null
+  evidence:          string | null
 }
 
 export interface SystemStats {

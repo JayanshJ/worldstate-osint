@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Globe, LayoutDashboard, Zap } from 'lucide-react'
+import { GitBranch, Globe, LayoutDashboard, Zap } from 'lucide-react'
 import { Header } from './Header'
 import { StatsBar } from './StatsBar'
 import { Ticker } from '@/components/ticker/Ticker'
@@ -11,10 +11,11 @@ import { ClusterDetailModal } from '@/components/clusters/ClusterDetailModal'
 import { AlertPanel } from '@/components/alerts/AlertPanel'
 import { WorldMapView } from '@/components/map/WorldMapView'
 import { StrategyFeed } from '@/components/strategies/StrategyFeed'
+import { SupplyChainView } from '@/components/supply-chain/SupplyChainView'
 import { useAlerts } from '@/hooks/useAlerts'
 import { cn } from '@/lib/utils'
 
-type ViewMode = 'dashboard' | 'map' | 'alpha'
+type ViewMode = 'dashboard' | 'map' | 'alpha' | 'splc'
 
 /**
  * WarRoom — full Bloomberg-style layout:
@@ -82,6 +83,7 @@ export function WarRoom() {
             { mode: 'dashboard' as ViewMode, icon: LayoutDashboard, label: 'FEED'  },
             { mode: 'map'       as ViewMode, icon: Globe,            label: 'MAP'   },
             { mode: 'alpha'     as ViewMode, icon: Zap,              label: 'ALPHA' },
+            { mode: 'splc'      as ViewMode, icon: GitBranch,        label: 'SPLC'  },
           ] as const).map(({ mode, icon: Icon, label }) => (
             <button
               key={mode}
@@ -130,7 +132,7 @@ export function WarRoom() {
             >
               <WorldMapView onClusterSelect={openCluster} />
             </motion.div>
-          ) : (
+          ) : viewMode === 'alpha' ? (
             <motion.div
               key="alpha"
               initial={{ opacity: 0 }}
@@ -140,6 +142,17 @@ export function WarRoom() {
               className="flex-1 min-w-0 overflow-hidden"
             >
               <StrategyFeed onClusterSelect={openCluster} />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="splc"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="flex-1 min-w-0 overflow-hidden"
+            >
+              <SupplyChainView />
             </motion.div>
           )}
         </AnimatePresence>

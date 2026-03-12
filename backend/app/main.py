@@ -5,12 +5,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import alerts, clusters, feed, metals, search, stats, strategies, websocket
+from app.api.routes import supply_chain
 from app.api.routes.metals import start_metals_background
 from app.core.config import get_settings
 from app.core.database import engine
 from app.models.alert import Base as AlertBase  # noqa: F401
 from app.models.article import Base
 from app.models.strategy import MarketStrategy  # noqa: F401 — registers table with Base
+from app.models.supply_chain import SCCompany, SCEdge  # noqa: F401 — registers SC tables
 
 settings = get_settings()
 logging.basicConfig(level=settings.log_level)
@@ -51,8 +53,9 @@ app.include_router(feed.router,       prefix="/api/v1/feed",       tags=["feed"]
 app.include_router(search.router,     prefix="/api/v1/search",     tags=["search"])
 app.include_router(alerts.router,     prefix="/api/v1/alerts",     tags=["alerts"])
 app.include_router(stats.router,      prefix="/api/v1/stats",      tags=["stats"])
-app.include_router(strategies.router, prefix="/api/v1/strategies", tags=["strategies"])
-app.include_router(websocket.router,                                tags=["websocket"])
+app.include_router(strategies.router,     prefix="/api/v1/strategies", tags=["strategies"])
+app.include_router(supply_chain.router,   prefix="/api/v1/splc",       tags=["supply-chain"])
+app.include_router(websocket.router,                                    tags=["websocket"])
 
 
 @app.get("/health")
