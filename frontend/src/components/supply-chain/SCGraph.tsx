@@ -1,33 +1,34 @@
 /**
- * SCGraph — Bloomberg-style stakeholder network.
+ * SCGraph — Bloomberg P164-style Relationship Map.
  *
- * Layout (left → right):
- *   [T2 Suppliers] → [T1 Suppliers] → [FOCAL] → [Customers] → [Shareholders] → [Board] → [Analysts] → [Industries]
- *                                         ↓
- *                                   [Competitors row]
+ * Layout mirrors Bloomberg terminal:
+ *   - Focal company node at centre
+ *   - Each category forms a compact chip-grid cluster orbiting the focal
+ *   - A small hub dot + category label sits between focal and the chip grid
+ *   - Single spoke from focal edge → hub dot → chip grid
  *
- * Directions:  UPSTREAM · DOWNSTREAM · COMPETITOR · SHAREHOLDER · BOARD · ANALYST · INDUSTRY
+ * Categories: SUPPLIERS · CUSTOMERS · COMPETITORS · SHAREHOLDERS · BOARD · ANALYSTS · INDUSTRIES
  */
 
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react'
 import type { SCEdge } from '@/lib/api'
 
-// ─── Colour palette per direction ─────────────────────────────────────────────
+// ─── Palette ────────────────────────────────────────────────────────────────
 const DIR: Record<string, { bg: string; border: string; text: string; edge: string }> = {
-  UPSTREAM:    { bg: '#040f0a', border: '#00c896', text: '#6ee7c7', edge: '#00c896' },
-  DOWNSTREAM:  { bg: '#100900', border: '#f59e0b', text: '#fcd34d', edge: '#f59e0b' },
+  UPSTREAM:    { bg: '#061210', border: '#00c896', text: '#6ee7c7', edge: '#00c896' },
+  DOWNSTREAM:  { bg: '#120b00', border: '#f59e0b', text: '#fcd34d', edge: '#f59e0b' },
   COMPETITOR:  { bg: '#08081a', border: '#818cf8', text: '#a5b4fc', edge: '#818cf8' },
-  SHAREHOLDER: { bg: '#0f0900', border: '#eab308', text: '#fde047', edge: '#eab308' },
+  SHAREHOLDER: { bg: '#100a00', border: '#eab308', text: '#fde047', edge: '#eab308' },
   BOARD:       { bg: '#130818', border: '#e879f9', text: '#f0abfc', edge: '#e879f9' },
   ANALYST:     { bg: '#0a0818', border: '#a78bfa', text: '#c4b5fd', edge: '#a78bfa' },
-  INDUSTRY:    { bg: '#040e10', border: '#06b6d4', text: '#67e8f9', edge: '#06b6d4' },
+  INDUSTRY:    { bg: '#041012', border: '#06b6d4', text: '#67e8f9', edge: '#06b6d4' },
 }
 
 const RATING_COLOR: Record<string, string> = {
   BUY: '#22c55e', HOLD: '#f59e0b', SELL: '#ef4444',
 }
 
-const RISK_COLOR = { HIGH: '#ef4444', MEDIUM: '#f97316', LOW: '#22c55e', NONE: '#334155' }
+const RISK_COLOR = { HIGH: '#ef4444', MEDIUM: '#f97316', LOW: '#22c55e', NONE: '#2a3a4a' }
 
 function riskOf(e: SCEdge): keyof typeof RISK_COLOR {
   const x = e.pct_revenue ?? e.pct_cogs ?? 0
@@ -37,29 +38,67 @@ function riskOf(e: SCEdge): keyof typeof RISK_COLOR {
   return 'NONE'
 }
 
-// ─── Layout constants ─────────────────────────────────────────────────────────
-const NODE_W   = 134
-const NODE_H   = 32
-const V_GAP    = 7
-const H_GAP    = 148
-const FOCAL_W  = 92
-const FOCAL_H  = 54
-const PAD      = 32
-const COMP_SEP = 56
+// ─── Category ring order (clockwise from top) ────────────────────────────────
+const CAT_DEFS = [
+  { dir: 'UPSTREAM',    label: 'SUPPLIERS',    short: 'SUPPLIERS'    },
+  { dir: 'DOWNSTREAM',  label: 'CUSTOMERS',    short: 'CUSTOMERS'    },
+  { dir: 'SHAREHOLDER', label: 'HOLDERS',      short: 'HOLDERS'      },
+  { dir: 'BOARD',       label: 'BOARD',        short: 'BOARD'        },
+  { dir: 'ANALYST',     label: 'ANALYSTS',     short: 'ANALYSTS'     },
+  { dir: 'INDUSTRY',    label: 'INDUSTRIES',   short: 'INDUSTRIES'   },
+  { dir: 'COMPETITOR',  label: 'PEERS',        short: 'PEERS'        },
+] as const
 
-interface LayoutNode extends SCEdge { _x: number; _y: number }
+// ─── Chip grid constants ──────────────────────────────────────────────────────
+const COLS      = 3       // chips per row in each cluster
+const CHIP_W    = 82      // chip width
+const CHIP_H    = 22      // chip height
+const GAP_X     = 4       // horizontal gap between chips
+const GAP_Y     = 3       // vertical gap between chip rows
+const LABEL_H   = 18      // category label bar height
+const HUB_CR    = 6       // hub dot radius
+const HUB_R     = 200     // hub orbit radius from focal centre
+const GRID_EXTRA = 28     // extra distance past hub before grid starts
+const FOCAL_R   = 44
+const PAD       = 72
 
-export interface SCGraphProps {
-  ticker: string; legalName: string; edges: SCEdge[]; onNodeClick: (e: SCEdge) => void
+interface ChipNode extends SCEdge {
+  _x: number   // chip top-left x
+  _y: number   // chip top-left y
 }
 
-export function SCGraph({ ticker, legalName, edges, onNodeClick }: SCGraphProps) {
+interface Cluster {
+  dir: string
+  label: string
+  color: typeof DIR[string]
+  hubX: number
+  hubY: number
+  angle: number
+  gridX: number   // grid top-left x
+  gridY: number   // grid top-left y
+  gridW: number
+  gridH: number
+  chips: ChipNode[]
+  total: number   // total node count (same as chips.length for now)
+}
+
+export interface SCGraphProps {
+  ticker: string
+  legalName: string
+  edges: SCEdge[]
+  onNodeClick: (e: SCEdge) => void
+  onHubClick?: (dir: string, label: string, nodes: SCEdge[]) => void
+  onFocalClick?: () => void
+}
+
+export function SCGraph({ ticker, legalName, edges, onNodeClick, onHubClick, onFocalClick }: SCGraphProps) {
   const [hovered, setHovered] = useState<string | null>(null)
   const [tf, setTf]           = useState({ x: 0, y: 0, s: 1 })
   const dragging = useRef(false)
   const lastPos  = useRef({ x: 0, y: 0 })
   const svgRef   = useRef<SVGSVGElement>(null)
 
+  // ── Pan / zoom ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const svg = svgRef.current
     if (!svg) return
@@ -83,7 +122,8 @@ export function SCGraph({ ticker, legalName, edges, onNodeClick }: SCGraphProps)
 
   const onMouseDown = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     if ((e.target as Element).closest('g[data-node]')) return
-    dragging.current = true; lastPos.current = { x: e.clientX, y: e.clientY }
+    dragging.current = true
+    lastPos.current = { x: e.clientX, y: e.clientY }
     e.currentTarget.style.cursor = 'grabbing'
   }, [])
   const onMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
@@ -93,98 +133,92 @@ export function SCGraph({ ticker, legalName, edges, onNodeClick }: SCGraphProps)
     setTf(t => ({ ...t, x: t.x + dx, y: t.y + dy }))
   }, [])
   const onMouseUp = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
-    dragging.current = false; e.currentTarget.style.cursor = 'grab'
+    dragging.current = false
+    e.currentTarget.style.cursor = 'grab'
   }, [])
   const resetView = useCallback(() => setTf({ x: 0, y: 0, s: 1 }), [])
 
-  // ── Layout ──────────────────────────────────────────────────────────────────
+  // ── Layout ─────────────────────────────────────────────────────────────────
   const layout = useMemo(() => {
-    const upT2    = edges.filter(e => e.direction === 'UPSTREAM'    && e.tier === 2)
-    const upT1    = edges.filter(e => e.direction === 'UPSTREAM'    && (e.tier ?? 1) === 1)
-    const down    = edges.filter(e => e.direction === 'DOWNSTREAM')
-    const comp    = edges.filter(e => e.direction === 'COMPETITOR')
-    const share   = edges.filter(e => e.direction === 'SHAREHOLDER')
-    const board   = edges.filter(e => e.direction === 'BOARD')
-    const analyst = edges.filter(e => e.direction === 'ANALYST')
-    const industry= edges.filter(e => e.direction === 'INDUSTRY')
+    const cx = 0, cy = 0
 
-    const colH = (n: number) => n > 0 ? n * NODE_H + (n - 1) * V_GAP : FOCAL_H
-    const mainH = Math.max(
-      colH(upT1.length), colH(upT2.length), colH(down.length),
-      colH(share.length), colH(board.length), colH(analyst.length), colH(industry.length), FOCAL_H,
-    )
+    const activeCats = CAT_DEFS
+      .map(def => ({ ...def, nodes: edges.filter(e => e.direction === def.dir) }))
+      .filter(c => c.nodes.length > 0)
 
-    type ColDef = { nodes: SCEdge[]; cx: number; label: string; color: string }
-    const cols: ColDef[] = []
-    let x = PAD
+    if (activeCats.length === 0) return null
 
-    if (upT2.length > 0) {
-      cols.push({ nodes: upT2, cx: x + NODE_W / 2, label: 'TIER-2',       color: '#00c89640' })
-      x += NODE_W + H_GAP
+    // Proportional angular sectors
+    const weights = activeCats.map(c => Math.max(2, c.nodes.length))
+    const totalW  = weights.reduce((a, b) => a + b, 0)
+
+    let angleAccum = -Math.PI / 2  // start at 12 o'clock
+
+    const clusters: Cluster[] = activeCats.map((cat, i) => {
+      const sectorSpan = (weights[i] / totalW) * 2 * Math.PI
+      const midAngle   = angleAccum + sectorSpan / 2
+      angleAccum      += sectorSpan
+
+      const color = DIR[cat.dir] ?? DIR.COMPETITOR
+
+      // Hub dot position
+      const hubX = cx + HUB_R * Math.cos(midAngle)
+      const hubY = cy + HUB_R * Math.sin(midAngle)
+
+      // Grid dimensions
+      const n     = cat.nodes.length
+      const cols  = Math.min(COLS, n)
+      const rows  = Math.ceil(n / cols)
+      const gridW = cols * CHIP_W + (cols - 1) * GAP_X
+      const gridH = LABEL_H + rows * CHIP_H + (rows - 1) * GAP_Y
+
+      // Grid centre: pushed further out from focal past hub
+      const outDist  = HUB_R + GRID_EXTRA + gridH / 2
+      const gridCX   = cx + Math.cos(midAngle) * outDist
+      const gridCY   = cy + Math.sin(midAngle) * outDist
+      const gridX    = gridCX - gridW / 2
+      const gridY    = gridCY - gridH / 2
+
+      // Chip positions within grid
+      const chips: ChipNode[] = cat.nodes.map((node, j) => {
+        const col = j % cols
+        const row = Math.floor(j / cols)
+        return {
+          ...node,
+          _x: gridX + col * (CHIP_W + GAP_X),
+          _y: gridY + LABEL_H + row * (CHIP_H + GAP_Y),
+        }
+      })
+
+      return {
+        dir: cat.dir, label: cat.label, color,
+        hubX, hubY, angle: midAngle,
+        gridX, gridY, gridW, gridH,
+        chips, total: n,
+      }
+    })
+
+    // ViewBox
+    const allX: number[] = [], allY: number[] = []
+    for (const c of clusters) {
+      allX.push(c.gridX, c.gridX + c.gridW)
+      allY.push(c.gridY, c.gridY + c.gridH)
     }
-    if (upT1.length > 0) {
-      cols.push({ nodes: upT1, cx: x + NODE_W / 2, label: 'SUPPLIERS',    color: '#00c89660' })
-      x += NODE_W + H_GAP
-    }
+    const minX = Math.min(...allX) - PAD
+    const maxX = Math.max(...allX) + PAD
+    const minY = Math.min(...allY) - PAD
+    const maxY = Math.max(...allY) + PAD
 
-    const focalCX = x + FOCAL_W / 2
-    const focalCY = PAD + mainH / 2
-    x += FOCAL_W + H_GAP
-
-    if (down.length > 0) {
-      cols.push({ nodes: down,  cx: x + NODE_W / 2, label: 'CUSTOMERS',   color: '#f59e0b60' })
-      x += NODE_W + H_GAP
-    }
-    if (share.length > 0) {
-      cols.push({ nodes: share, cx: x + NODE_W / 2, label: 'SHAREHOLDERS',color: '#eab30860' })
-      x += NODE_W + H_GAP
-    }
-    if (board.length > 0) {
-      cols.push({ nodes: board,    cx: x + NODE_W / 2, label: 'BOARD',     color: '#e879f960' })
-      x += NODE_W + H_GAP
-    }
-    if (analyst.length > 0) {
-      cols.push({ nodes: analyst,  cx: x + NODE_W / 2, label: 'ANALYSTS',  color: '#a78bfa60' })
-      x += NODE_W + H_GAP
-    }
-    if (industry.length > 0) {
-      cols.push({ nodes: industry, cx: x + NODE_W / 2, label: 'INDUSTRIES',color: '#06b6d460' })
-      x += NODE_W + PAD
-    } else {
-      x += PAD
-    }
-
-    function placeCol(nodes: SCEdge[], cx: number): LayoutNode[] {
-      const h = colH(nodes.length)
-      const startY = PAD + (mainH - h) / 2
-      return nodes.map((n, i) => ({
-        ...n, _x: cx - NODE_W / 2, _y: startY + i * (NODE_H + V_GAP),
-      } as LayoutNode))
-    }
-
-    const placed = cols.flatMap(c => placeCol(c.nodes, c.cx))
-
-    const C_GAP      = 12
-    const compTotalW = comp.length * NODE_W + Math.max(0, comp.length - 1) * C_GAP
-    const compStartX = focalCX - compTotalW / 2
-    const compY      = PAD + mainH + COMP_SEP
-    const compNodes: LayoutNode[] = comp.map((n, i) => ({
-      ...n, _x: compStartX + i * (NODE_W + C_GAP), _y: compY,
-    } as LayoutNode))
-
-    const allNodes = [...placed, ...compNodes]
-    const xs = allNodes.map(n => n._x)
-    const ys = allNodes.map(n => n._y)
-    const vbX = Math.min(...xs, focalCX - FOCAL_W / 2) - PAD
-    const vbY = Math.min(...ys, focalCY - FOCAL_H / 2) - PAD
-    const vbW = Math.max(...xs.map(v => v + NODE_W), focalCX + FOCAL_W / 2, x) + PAD - vbX
-    const vbH = Math.max(...ys.map(v => v + NODE_H), focalCY + FOCAL_H / 2, compY + NODE_H) + PAD + 20 - vbY
-
-    return { placed, compNodes, focalCX, focalCY, vbX, vbY, vbW, vbH, cols, compY }
+    return { cx, cy, clusters, vb: { x: minX, y: minY, w: maxX - minX, h: maxY - minY } }
   }, [edges])
 
-  const { placed, compNodes, focalCX, focalCY, vbX, vbY, vbW, vbH, cols, compY } = layout
-  const allNodes = [...placed, ...compNodes]
+  if (!layout) return (
+    <div className="w-full h-full flex items-center justify-center text-terminal-dim text-xs font-mono">
+      No graph data
+    </div>
+  )
+
+  const { cx, cy, clusters, vb } = layout
 
   return (
     <div className="w-full h-full relative overflow-hidden" style={{ minHeight: 240 }}>
@@ -197,148 +231,190 @@ export function SCGraph({ ticker, legalName, edges, onNodeClick }: SCGraphProps)
       </div>
 
       <svg ref={svgRef}
-        viewBox={`${vbX} ${vbY} ${vbW} ${vbH}`}
-        width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
+        viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}
+        width="100%" height="100%"
+        preserveAspectRatio="xMidYMid meet"
         style={{ display: 'block', cursor: 'grab', userSelect: 'none' }}
         onMouseDown={onMouseDown} onMouseMove={onMouseMove}
         onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
       >
         <defs>
-          <filter id="sc-glow-f" x="-120%" y="-120%" width="340%" height="340%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="7" result="b"/>
+          <filter id="sc-glow-f" x="-100%" y="-100%" width="300%" height="300%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="sc-glow-hub" x="-150%" y="-150%" width="400%" height="400%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="b"/>
             <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
           </filter>
           <filter id="sc-glow-e" x="-40%" y="-40%" width="180%" height="180%">
             <feGaussianBlur in="SourceGraphic" stdDeviation="1.5" result="b"/>
             <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
           </filter>
-          {(['UPSTREAM', 'DOWNSTREAM'] as const).map(d => (
-            <marker key={d} id={`sc-arr-${d}`} markerWidth={5} markerHeight={5} refX={4} refY={2.5} orient="auto">
-              <path d="M0,0 L0,5 L5,2.5z" fill={DIR[d].edge} fillOpacity={0.5}/>
-            </marker>
-          ))}
         </defs>
 
         <g transform={`translate(${tf.x},${tf.y}) scale(${tf.s})`}>
 
-          {/* ── Section labels ── */}
-          {cols.map(c => (
-            <text key={c.label} x={c.cx} y={vbY + 18}
-              textAnchor="middle" fontSize={7.5} fill={c.color}
-              letterSpacing={2} fontFamily="monospace">{c.label}</text>
-          ))}
-          {compNodes.length > 0 && (
-            <text x={focalCX} y={compY + NODE_H + 14}
-              textAnchor="middle" fontSize={7.5} fill="#818cf850"
-              letterSpacing={2} fontFamily="monospace">COMPETITORS</text>
-          )}
-
-          {/* ── Edges ── */}
-          {allNodes.map(e => {
-            const style = DIR[e.direction] ?? DIR.COMPETITOR
-            const isHov = hovered === e.id
-            const exp   = e.pct_revenue ?? e.pct_cogs ?? 0
-            const sw    = isHov ? 1.4 : Math.max(0.4, Math.min(1.8, (exp / 20) * 1.5 + 0.4))
-            const nx = e._x + NODE_W / 2, ny = e._y + NODE_H / 2
+          {/* ── Spokes: focal → hub dot ──────────────────────────────────── */}
+          {clusters.map(c => {
+            const dx = c.hubX - cx, dy = c.hubY - cy
+            const len = Math.sqrt(dx * dx + dy * dy)
+            const ux = dx / len, uy = dy / len
+            // spoke from focal circle edge to just before the hub dot
+            const x1 = cx + ux * (FOCAL_R + 2)
+            const y1 = cy + uy * (FOCAL_R + 2)
+            const x2 = c.hubX - ux * (HUB_CR + 1)
+            const y2 = c.hubY - uy * (HUB_CR + 1)
+            // line continues from hub to grid label centre
+            const labelCX = c.gridX + c.gridW / 2
+            const labelCY = c.gridY + LABEL_H / 2
+            const dx2 = labelCX - c.hubX, dy2 = labelCY - c.hubY
+            const len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2)
+            const x3 = c.hubX + (dx2 / len2) * (HUB_CR + 1)
+            const y3 = c.hubY + (dy2 / len2) * (HUB_CR + 1)
             return (
-              <line key={`e-${e.id}`}
-                x1={focalCX} y1={focalCY} x2={nx} y2={ny}
-                stroke={style.edge} strokeWidth={sw}
-                strokeOpacity={isHov ? 0.75 : 0.18}
-                strokeDasharray={['SHAREHOLDER','BOARD','ANALYST','INDUSTRY'].includes(e.direction) ? '4 3' : undefined}
-                markerEnd={
-                  e.direction === 'UPSTREAM'   ? 'url(#sc-arr-UPSTREAM)'   :
-                  e.direction === 'DOWNSTREAM' ? 'url(#sc-arr-DOWNSTREAM)' : undefined
-                }
-                filter={isHov ? 'url(#sc-glow-e)' : undefined}
-              />
-            )
-          })}
-
-          {/* ── Focal node ── */}
-          <g filter="url(#sc-glow-f)">
-            <circle cx={focalCX} cy={focalCY} r={42}
-              fill="none" stroke="#00d4ff" strokeWidth={0.5} strokeOpacity={0.25}/>
-            <circle cx={focalCX} cy={focalCY} r={30}
-              fill="none" stroke="#00d4ff" strokeWidth={0.7} strokeOpacity={0.35}/>
-            <rect x={focalCX - FOCAL_W / 2} y={focalCY - FOCAL_H / 2}
-              width={FOCAL_W} height={FOCAL_H} rx={5}
-              fill="#030c18" stroke="#00d4ff" strokeWidth={1.5}/>
-            <rect x={focalCX - FOCAL_W / 2} y={focalCY - FOCAL_H / 2}
-              width={FOCAL_W} height={3} rx={2} fill="#00d4ff" fillOpacity={0.6}/>
-            <text x={focalCX} y={focalCY - 2} textAnchor="middle"
-              fontSize={16} fontWeight="bold" fill="#00d4ff" fontFamily="monospace">{ticker}</text>
-            <text x={focalCX} y={focalCY + 14} textAnchor="middle"
-              fontSize={7} fill="#4a5568" fontFamily="monospace">
-              {legalName.length > 20 ? legalName.slice(0, 19) + '…' : legalName}
-            </text>
-          </g>
-
-          {/* ── Entity nodes ── */}
-          {allNodes.map(e => {
-            const style  = DIR[e.direction] ?? DIR.COMPETITOR
-            const risk   = riskOf(e)
-            const isHov  = hovered === e.id
-            const isSH   = e.direction === 'SHAREHOLDER'
-            const isBD   = e.direction === 'BOARD'
-            const isAN   = e.direction === 'ANALYST'
-            const isIN   = e.direction === 'INDUSTRY'
-            const isMeta = isSH || isBD || isAN || isIN
-            const exp    = e.pct_revenue ?? e.pct_cogs ?? 0
-            // Right-side metric: ownership % for shareholders only
-            const expStr = isMeta && !isSH ? '' : exp > 0 ? `${exp.toFixed(1)}%` : ''
-            const maxCh  = Math.floor((NODE_W - (expStr ? 44 : 18)) / 6.3)
-            const name   = e.entity_name.length > maxCh
-              ? e.entity_name.slice(0, maxCh - 1) + '…' : e.entity_name
-            const subLabel = isBD
-              ? (e.relationship_type || '').replace(/_/g, ' ')
-              : isSH
-                ? (e.relationship_type === 'MUTUAL_FUND' ? 'MF' : 'INST')
-                : isAN
-                  ? (e.relationship_type || '')   // BUY / HOLD / SELL
-                  : isIN
-                    ? (e.relationship_type?.replace('GICS_', '').replace('_', ' ') || '')
-                    : [e.hq_country, e.tier === 2 ? 'T2' : ''].filter(Boolean).join(' · ')
-            // Left accent bar: rating colour for analysts, direction colour for other meta
-            const accentColor = isAN
-              ? (RATING_COLOR[e.relationship_type ?? ''] ?? style.border)
-              : isMeta ? style.border : RISK_COLOR[risk]
-
-            return (
-              <g key={`n-${e.id}`} data-node="1" style={{ cursor: 'pointer' }}
-                onMouseEnter={() => setHovered(e.id)}
-                onMouseLeave={() => setHovered(null)}
-                onClick={() => onNodeClick(e)}
-              >
-                <rect x={e._x} y={e._y} width={NODE_W} height={NODE_H} rx={3}
-                  fill={isHov ? style.bg + 'dd' : style.bg}
-                  stroke={isHov ? style.border : style.border + '60'}
-                  strokeWidth={isHov ? 1 : 0.6}/>
-                {/* Left accent bar */}
-                <rect x={e._x} y={e._y} width={2.5} height={NODE_H} rx={1.5}
-                  fill={accentColor} fillOpacity={0.9}/>
-                {/* Name */}
-                <text x={e._x + 9} y={e._y + NODE_H * 0.42}
-                  dominantBaseline="middle" fontSize={7.5}
-                  fill={isHov ? style.text : style.text + 'bb'}
-                  fontFamily="monospace" fontWeight="500">{name}</text>
-                {/* Right metric */}
-                {expStr && (
-                  <text x={e._x + NODE_W - 5} y={e._y + NODE_H * 0.42}
-                    dominantBaseline="middle" fontSize={7} textAnchor="end"
-                    fill={style.border + 'cc'} fontFamily="monospace">{expStr}</text>
-                )}
-                {/* Sub-label */}
-                {subLabel && (
-                  <text x={e._x + 9} y={e._y + NODE_H - 6}
-                    fontSize={6} fill={isMeta ? (isAN ? accentColor + 'cc' : style.border + '80') : '#3a4a5a'}
-                    fontFamily="monospace">
-                    {subLabel.length > 22 ? subLabel.slice(0, 21) + '…' : subLabel}
-                  </text>
-                )}
+              <g key={`spoke-${c.dir}`}>
+                <line x1={x1} y1={y1} x2={x2} y2={y2}
+                  stroke={c.color.edge} strokeWidth={0.8} strokeOpacity={0.35}/>
+                <line x1={x3} y1={y3} x2={labelCX} y2={labelCY}
+                  stroke={c.color.edge} strokeWidth={0.6}
+                  strokeOpacity={0.2} strokeDasharray="3 4"/>
               </g>
             )
           })}
+
+          {/* ── Hub dots ─────────────────────────────────────────────────── */}
+          {clusters.map(c => (
+            <g key={`hub-${c.dir}`} filter="url(#sc-glow-hub)"
+              data-node="1" style={{ cursor: 'pointer' }}
+              onClick={() => onHubClick?.(c.dir, c.label, c.chips as SCEdge[])}
+            >
+              {/* Large invisible hit area */}
+              <circle cx={c.hubX} cy={c.hubY} r={HUB_CR + 14} fill="transparent"/>
+              <circle cx={c.hubX} cy={c.hubY} r={HUB_CR + 4}
+                fill="none" stroke={c.color.border}
+                strokeWidth={0.5} strokeOpacity={0.2}/>
+              <circle cx={c.hubX} cy={c.hubY} r={HUB_CR}
+                fill={c.color.bg} stroke={c.color.border} strokeWidth={1.2}/>
+            </g>
+          ))}
+
+          {/* ── Chip clusters ─────────────────────────────────────────────── */}
+          {clusters.map(c => (
+            <g key={`cluster-${c.dir}`}>
+              {/* Cluster outer border */}
+              <rect x={c.gridX - 2} y={c.gridY - 2}
+                width={c.gridW + 4} height={c.gridH + 4} rx={4}
+                fill="none"
+                stroke={c.color.border} strokeWidth={0.5} strokeOpacity={0.15}/>
+
+              {/* Category label bar — clickable */}
+              <g data-node="1" style={{ cursor: 'pointer' }}
+                onClick={() => onHubClick?.(c.dir, c.label, c.chips as SCEdge[])}>
+                <rect x={c.gridX} y={c.gridY} width={c.gridW} height={LABEL_H} rx={3}
+                  fill={c.color.border + '18'}/>
+                <rect x={c.gridX} y={c.gridY} width={c.gridW} height={2} rx={1}
+                  fill={c.color.border} fillOpacity={0.6}/>
+                <text x={c.gridX + c.gridW / 2} y={c.gridY + LABEL_H / 2}
+                  textAnchor="middle" dominantBaseline="middle"
+                  fontSize={7} fontWeight="bold" letterSpacing={1.5}
+                  fill={c.color.text} fontFamily="monospace">
+                  {c.label} ({c.total})
+                </text>
+              </g>
+
+              {/* Chip nodes */}
+              {c.chips.map(chip => {
+                const isHov = hovered === chip.id
+                const isSH  = chip.direction === 'SHAREHOLDER'
+                const isBD  = chip.direction === 'BOARD'
+                const isAN  = chip.direction === 'ANALYST'
+                const isIN  = chip.direction === 'INDUSTRY'
+                const isMeta = isSH || isBD || isAN || isIN
+                const exp   = chip.pct_revenue ?? chip.pct_cogs ?? 0
+                const risk  = riskOf(chip)
+
+                // Accent colour
+                const accentColor = isAN
+                  ? (RATING_COLOR[chip.relationship_type ?? ''] ?? c.color.border)
+                  : isMeta ? c.color.border : RISK_COLOR[risk]
+
+                // Truncated name — chip is narrow
+                const maxCh = Math.floor((CHIP_W - 10) / 5.8)
+                const name  = chip.entity_name.length > maxCh
+                  ? chip.entity_name.slice(0, maxCh - 1) + '…'
+                  : chip.entity_name
+
+                // Sub-label (small, bottom line)
+                const sub = isBD
+                  ? (chip.relationship_type || '').replace(/_/g, ' ')
+                  : isSH
+                    ? (exp > 0 ? `${exp.toFixed(1)}%` : chip.relationship_type === 'MUTUAL_FUND' ? 'MF' : 'INST')
+                    : isAN
+                      ? (chip.relationship_type || '')
+                      : isIN
+                        ? (chip.relationship_type?.replace('GICS_', '').replace(/_/g, ' ') || '')
+                        : [chip.hq_country, chip.tier === 2 ? 'T2' : ''].filter(Boolean).join(' · ')
+
+                const hasSub = !!sub
+                const nameY  = hasSub ? chip._y + 7 : chip._y + CHIP_H / 2
+
+                return (
+                  <g key={`chip-${chip.id}`} data-node="1" style={{ cursor: 'pointer' }}
+                    onMouseEnter={() => setHovered(chip.id)}
+                    onMouseLeave={() => setHovered(null)}
+                    onClick={() => onNodeClick(chip)}
+                    filter={isHov ? 'url(#sc-glow-e)' : undefined}
+                  >
+                    {/* Chip background */}
+                    <rect x={chip._x} y={chip._y} width={CHIP_W} height={CHIP_H} rx={2}
+                      fill={isHov ? c.color.bg + 'ff' : c.color.bg + 'dd'}
+                      stroke={isHov ? c.color.border : c.color.border + '55'}
+                      strokeWidth={isHov ? 1 : 0.5}/>
+                    {/* Left accent bar */}
+                    <rect x={chip._x} y={chip._y} width={2} height={CHIP_H} rx={1}
+                      fill={accentColor} fillOpacity={0.85}/>
+                    {/* Name */}
+                    <text x={chip._x + 7} y={nameY}
+                      dominantBaseline="middle" fontSize={7}
+                      fill={isHov ? c.color.text : c.color.text + 'cc'}
+                      fontFamily="monospace" fontWeight="500">
+                      {name}
+                    </text>
+                    {/* Sub-label */}
+                    {hasSub && (
+                      <text x={chip._x + 7} y={chip._y + CHIP_H - 5}
+                        fontSize={5.5}
+                        fill={isAN ? accentColor + 'dd' : c.color.border + '70'}
+                        fontFamily="monospace">
+                        {sub.length > 16 ? sub.slice(0, 15) + '…' : sub}
+                      </text>
+                    )}
+                  </g>
+                )
+              })}
+            </g>
+          ))}
+
+          {/* ── Focal node ───────────────────────────────────────────────── */}
+          <g filter="url(#sc-glow-f)" data-node="1" style={{ cursor: 'pointer' }}
+            onClick={() => onFocalClick?.()}>
+            <circle cx={cx} cy={cy} r={FOCAL_R + 14}
+              fill="none" stroke="#00d4ff" strokeWidth={0.4} strokeOpacity={0.1}/>
+            <circle cx={cx} cy={cy} r={FOCAL_R + 5}
+              fill="none" stroke="#00d4ff" strokeWidth={0.6} strokeOpacity={0.18}/>
+            <circle cx={cx} cy={cy} r={FOCAL_R}
+              fill="#030c18" stroke="#00d4ff" strokeWidth={1.8}/>
+            <text x={cx} y={cy - 6} textAnchor="middle" dominantBaseline="middle"
+              fontSize={16} fontWeight="bold" fill="#00d4ff" fontFamily="monospace">
+              {ticker}
+            </text>
+            <text x={cx} y={cy + 11} textAnchor="middle"
+              fontSize={6.5} fill="#4a6070" fontFamily="monospace">
+              {legalName.length > 18 ? legalName.slice(0, 17) + '…' : legalName}
+            </text>
+          </g>
+
         </g>
       </svg>
     </div>

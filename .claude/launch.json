@@ -3,9 +3,9 @@
   "configurations": [
     {
       "name": "frontend",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--", "--port", "3001"],
-      "cwd": "frontend",
+      "runtimeExecutable": "/Users/jayansh/.nvm/versions/node/v25.7.0/bin/node",
+      "runtimeArgs": ["/Users/jayansh/Developer/Personal/Bloomberg/frontend/node_modules/.bin/vite", "--port", "3001"],
+      "cwd": "/Users/jayansh/Developer/Personal/Bloomberg/frontend",
       "port": 3001
     },
     {

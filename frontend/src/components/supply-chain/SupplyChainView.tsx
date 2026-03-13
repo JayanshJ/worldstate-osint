@@ -26,6 +26,12 @@ import { cn }       from '@/lib/utils'
 
 type ViewTab = 'graph' | 'table' | 'intel'
 
+// ─── Drawer selection union ───────────────────────────────────────────────
+type DrawerItem =
+  | { kind: 'edge';  edge: SCEdge }
+  | { kind: 'hub';   dir: string; label: string; nodes: SCEdge[] }
+  | { kind: 'focal'; company: SCCompany; edges: SCEdge[] }
+
 // ─── Corporate meta nodes ─────────────────────────────────────────────────
 function buildMetaNodes(profile: CompanyProfile): SCEdge[] {
   const shareholders: SCEdge[] = [
@@ -105,6 +111,155 @@ function buildMetaNodes(profile: CompanyProfile): SCEdge[] {
   }))
 
   return [...shareholders, ...board, ...analysts, ...industries]
+}
+
+// ─── Colour map (mirrors SCGraph) ─────────────────────────────────────────
+const DIR_COLOR: Record<string, string> = {
+  UPSTREAM:    '#00c896', DOWNSTREAM: '#f59e0b', COMPETITOR:  '#818cf8',
+  SHAREHOLDER: '#eab308', BOARD:      '#e879f9', ANALYST:     '#a78bfa',
+  INDUSTRY:    '#06b6d4',
+}
+
+// ─── Hub / category drawer ────────────────────────────────────────────────
+function HubDrawer({ dir, label, nodes, onClose }: {
+  dir: string; label: string; nodes: SCEdge[]; onClose: () => void
+}) {
+  const color = DIR_COLOR[dir] ?? '#00d4ff'
+  const isMeta = ['SHAREHOLDER','BOARD','ANALYST','INDUSTRY'].includes(dir)
+  return (
+    <motion.div
+      initial={{ x: 380, opacity: 0 }} animate={{ x: 0, opacity: 1 }}
+      exit={{ x: 380, opacity: 0 }}
+      transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+      className="w-[360px] flex-shrink-0 border-l border-terminal-border flex flex-col bg-terminal-bg overflow-hidden"
+    >
+      <div className="flex items-center justify-between px-4 py-3 border-b border-terminal-border bg-terminal-surface flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full" style={{ background: color }} />
+          <span className="font-mono font-bold text-sm" style={{ color }}>{label}</span>
+          <span className="text-[9px] font-mono text-terminal-dim">({nodes.length})</span>
+        </div>
+        <button onClick={onClose} className="text-terminal-dim hover:text-terminal-text transition-colors">
+          <X size={14} />
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto scrollbar-thin p-3 space-y-1">
+        {nodes.map(n => {
+          const sub = n.relationship_type?.replace(/_/g, ' ') ?? ''
+          const pct = n.pct_revenue ?? n.pct_cogs ?? 0
+          return (
+            <div key={n.id}
+              className="flex items-center justify-between px-3 py-2 rounded-sm"
+              style={{ background: '#ffffff06', border: `0.5px solid ${color}30` }}
+            >
+              <div className="min-w-0">
+                <div className="text-[10px] font-mono font-bold text-terminal-text truncate"
+                  style={{ color: color + 'dd' }}>
+                  {n.entity_name}
+                </div>
+                {sub && (
+                  <div className="text-[8px] font-mono text-terminal-dim/60 truncate mt-0.5">{sub}</div>
+                )}
+              </div>
+              {pct > 0 && (
+                <span className="text-[9px] font-mono flex-shrink-0 ml-2" style={{ color }}>
+                  {pct.toFixed(1)}%
+                </span>
+              )}
+              {n.hq_country && (
+                <span className="text-[8px] font-mono text-terminal-dim/50 flex-shrink-0 ml-2">
+                  {n.hq_country}
+                </span>
+              )}
+              {!isMeta && n.tier === 2 && (
+                <span className="text-[7px] font-mono text-terminal-dim/40 flex-shrink-0 ml-1">T2</span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </motion.div>
+  )
+}
+
+// ─── Focal / company drawer ───────────────────────────────────────────────
+function FocalDrawer({ company, edges, onClose }: {
+  company: SCCompany; edges: SCEdge[]; onClose: () => void
+}) {
+  const upstream   = edges.filter(e => e.direction === 'UPSTREAM').length
+  const downstream = edges.filter(e => e.direction === 'DOWNSTREAM').length
+  const competitor = edges.filter(e => e.direction === 'COMPETITOR').length
+  const shareholder= edges.filter(e => e.direction === 'SHAREHOLDER').length
+  const board      = edges.filter(e => e.direction === 'BOARD').length
+  const analyst    = edges.filter(e => e.direction === 'ANALYST').length
+  const industry   = edges.filter(e => e.direction === 'INDUSTRY').length
+
+  return (
+    <motion.div
+      initial={{ x: 380, opacity: 0 }} animate={{ x: 0, opacity: 1 }}
+      exit={{ x: 380, opacity: 0 }}
+      transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+      className="w-[360px] flex-shrink-0 border-l border-terminal-border flex flex-col bg-terminal-bg overflow-hidden"
+    >
+      <div className="flex items-center justify-between px-4 py-3 border-b border-terminal-border bg-terminal-surface flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-[#00d4ff]" />
+          <span className="font-mono font-bold text-sm text-[#00d4ff]">{company.ticker}</span>
+          <span className="text-[9px] font-mono text-terminal-dim truncate max-w-[180px]">
+            {company.legal_name}
+          </span>
+        </div>
+        <button onClick={onClose} className="text-terminal-dim hover:text-terminal-text transition-colors">
+          <X size={14} />
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-4">
+        {/* Company metadata */}
+        <div className="grid grid-cols-2 gap-2">
+          {[
+            { label: 'TICKER',   value: company.ticker },
+            { label: 'EXCHANGE', value: company.exchange ?? '—' },
+            { label: 'SECTOR',   value: company.sector  ?? '—' },
+            { label: 'SIC CODE', value: company.sic_code ? `SIC ${company.sic_code}` : '—' },
+          ].map(({ label, value }) => (
+            <div key={label} className="bg-terminal-surface/50 rounded-sm px-3 py-2">
+              <div className="text-[8px] font-mono text-terminal-dim tracking-widest mb-0.5">{label}</div>
+              <div className="text-[10px] font-mono text-terminal-text">{value}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Relationship summary */}
+        <div>
+          <div className="text-[9px] font-mono text-terminal-dim tracking-widest mb-2">RELATIONSHIPS MAPPED</div>
+          <div className="grid grid-cols-2 gap-1.5">
+            {[
+              { label: 'Suppliers',    count: upstream,    color: '#00c896' },
+              { label: 'Customers',    count: downstream,  color: '#f59e0b' },
+              { label: 'Peers',        count: competitor,  color: '#818cf8' },
+              { label: 'Shareholders', count: shareholder, color: '#eab308' },
+              { label: 'Board',        count: board,       color: '#e879f9' },
+              { label: 'Analysts',     count: analyst,     color: '#a78bfa' },
+              { label: 'Industries',   count: industry,    color: '#06b6d4' },
+            ].filter(r => r.count > 0).map(({ label, count, color }) => (
+              <div key={label} className="flex items-center justify-between px-3 py-1.5 rounded-sm"
+                style={{ background: color + '0d', border: `0.5px solid ${color}30` }}>
+                <span className="text-[9px] font-mono" style={{ color: color + 'cc' }}>{label}</span>
+                <span className="text-[11px] font-mono font-bold" style={{ color }}>{count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Fiscal year end */}
+        {company.fiscal_year_end && (
+          <div className="text-[9px] font-mono text-terminal-dim/50">
+            Fiscal year end: {company.fiscal_year_end}
+          </div>
+        )}
+      </div>
+    </motion.div>
+  )
 }
 
 // ─── Risk helpers ─────────────────────────────────────────────────────────
@@ -415,7 +570,7 @@ export function SupplyChainView() {
   const [company,      setCompany]      = useState<SCCompany | null>(null)
   const [edges,        setEdges]        = useState<SCEdge[]>([])
   const [tab,          setTab]          = useState<ViewTab>('graph')
-  const [selected,     setSelected]     = useState<SCEdge | null>(null)
+  const [selected,     setSelected]     = useState<DrawerItem | null>(null)
   const [analysing,    setAnalysing]    = useState(false)
   const [prevTickers,  setPrevTickers]  = useState<SCCompany[]>([])
   const inputRef  = useRef<HTMLInputElement>(null)
@@ -465,7 +620,7 @@ export function SupplyChainView() {
       try {
         const profile = await api.company.get(ticker)
         allEdges.push(...buildMetaNodes(profile))
-      } catch { /* profile unavailable — show SC data without meta nodes */ }
+      } catch (profileErr) { console.warn('[SPLC] company profile fetch failed:', profileErr) }
       setEdges(allEdges)
       setLoading(false)
     } catch (e: unknown) {
@@ -515,7 +670,7 @@ export function SupplyChainView() {
       try {
         const profile = await api.company.get(t)
         allEdges.push(...buildMetaNodes(profile))
-      } catch { /* profile unavailable */ }
+      } catch (profileErr) { console.warn('[SPLC] company profile fetch failed:', profileErr) }
       setEdges(allEdges)
       setLoading(false)
     } catch (e: unknown) {
@@ -816,11 +971,13 @@ export function SupplyChainView() {
                       ticker={company.ticker}
                       legalName={company.legal_name ?? company.ticker}
                       edges={edges}
-                      onNodeClick={setSelected}
+                      onNodeClick={e => setSelected({ kind: 'edge', edge: e })}
+                      onHubClick={(dir, label, nodes) => setSelected({ kind: 'hub', dir, label, nodes })}
+                      onFocalClick={() => setSelected({ kind: 'focal', company, edges })}
                     />
                   </div>
                 ) : tab === 'table' ? (
-                  <SCTable edges={edges} onRowClick={setSelected} />
+                  <SCTable edges={edges} onRowClick={e => setSelected({ kind: 'edge', edge: e })} />
                 ) : (
                   <SCIntel company={company} edges={edges} />
                 )}
@@ -828,12 +985,29 @@ export function SupplyChainView() {
             )}
           </div>
 
-          {/* Evidence drawer */}
+          {/* Drawers */}
           <AnimatePresence>
-            {selected && (
+            {selected?.kind === 'edge' && (
               <EvidenceDrawer
-                key={selected.id}
-                edge={selected}
+                key={selected.edge.id}
+                edge={selected.edge}
+                onClose={() => setSelected(null)}
+              />
+            )}
+            {selected?.kind === 'hub' && (
+              <HubDrawer
+                key={`hub-${selected.dir}`}
+                dir={selected.dir}
+                label={selected.label}
+                nodes={selected.nodes}
+                onClose={() => setSelected(null)}
+              />
+            )}
+            {selected?.kind === 'focal' && (
+              <FocalDrawer
+                key="focal"
+                company={selected.company}
+                edges={selected.edges}
                 onClose={() => setSelected(null)}
               />
             )}
