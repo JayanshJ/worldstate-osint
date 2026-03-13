@@ -1,43 +1,26 @@
 /**
- * SCGraph — Bloomberg-style radial supply-chain network.
- * Focal node at centre; suppliers fan left, customers fan right,
- * competitors arc below.  No extra npm deps.
+ * SCGraph — Bloomberg-style supply-chain network.
+ *
+ * Layout:
+ *   [T2 col] → [T1 col] → [FOCAL] → [Downstream col]
+ *                              ↓
+ *                       [Competitors row]
+ *
+ * Straight radiating edges, Bloomberg colour palette, glow focal node.
+ * Column layout guarantees zero overlap regardless of node count.
  */
 
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react'
 import type { SCEdge } from '@/lib/api'
 
-// ─── Node colour palette (by direction) ──────────────────────────────────────
+// ─── Colour palette ───────────────────────────────────────────────────────────
 const DIR = {
-  UPSTREAM: {
-    bg:     '#040f0a',
-    border: '#00c896',
-    text:   '#6ee7c7',
-    edge:   '#00c896',
-    label:  'SUPPLIERS',
-  },
-  DOWNSTREAM: {
-    bg:     '#100900',
-    border: '#f59e0b',
-    text:   '#fcd34d',
-    edge:   '#f59e0b',
-    label:  'CUSTOMERS',
-  },
-  COMPETITOR: {
-    bg:     '#08081a',
-    border: '#818cf8',
-    text:   '#a5b4fc',
-    edge:   '#818cf8',
-    label:  'COMPETITORS',
-  },
+  UPSTREAM:   { bg: '#040f0a', border: '#00c896', text: '#6ee7c7', edge: '#00c896' },
+  DOWNSTREAM: { bg: '#100900', border: '#f59e0b', text: '#fcd34d', edge: '#f59e0b' },
+  COMPETITOR: { bg: '#08081a', border: '#818cf8', text: '#a5b4fc', edge: '#818cf8' },
 } as const
 
-const RISK_COLOR = {
-  HIGH:   '#ef4444',
-  MEDIUM: '#f97316',
-  LOW:    '#22c55e',
-  NONE:   '#334155',
-}
+const RISK_COLOR = { HIGH: '#ef4444', MEDIUM: '#f97316', LOW: '#22c55e', NONE: '#334155' }
 
 function riskOf(e: SCEdge): keyof typeof RISK_COLOR {
   const x = e.pct_revenue ?? e.pct_cogs ?? 0
@@ -48,101 +31,43 @@ function riskOf(e: SCEdge): keyof typeof RISK_COLOR {
 }
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
-const NODE_W   = 130
-const NODE_H   = 30
-const HW       = NODE_W / 2
-const HH       = NODE_H / 2
-const DEG      = Math.PI / 180
-
-// Sector centres (radians, SVG: 0=right, π/2=down, π=left)
-const UP_MID   = 180 * DEG   // left
-const DOWN_MID =   0 * DEG   // right
-const COMP_MID =  90 * DEG   // bottom
-
-// Base radii — inflated for dense columns in layout()
-const R_T1_BASE   = 195
-const R_T2_BASE   = 320
-const R_DOWN_BASE = 215
-const R_COMP_BASE = 195
-
-// Max arc span per sector
-const MAX_SPAN_UP   = 130 * DEG
-const MAX_SPAN_DOWN = 120 * DEG
-const MAX_SPAN_COMP = 150 * DEG   // wider — competitors fan horizontally so need more room
-
-/**
- * Minimum centre-to-centre distance along an arc at sector angle `mid`
- * so that adjacent axis-aligned NODE_W×NODE_H rectangles don't overlap.
- *
- * The arc direction at angle `mid` is perpendicular to the radius:
- *   tangent = (−sin mid, cos mid)
- * So the "width" a node occupies along that tangent is:
- *   |sin mid| × NODE_W  +  |cos mid| × NODE_H
- */
-function nodeGap(mid: number): number {
-  return Math.abs(Math.sin(mid)) * NODE_W + Math.abs(Math.cos(mid)) * NODE_H + 10
-}
-
-/**
- * Minimum radius so that `count` nodes evenly spread over `maxSpan` radians
- * at sector centre `mid` are non-overlapping.
- */
-function minRadiusForSector(count: number, mid: number, maxSpan: number): number {
-  if (count <= 1) return 0
-  return (count - 1) * nodeGap(mid) / maxSpan
-}
-
-/**
- * Evenly distribute `count` nodes across an arc centred at `mid`.
- * Span auto-expands so consecutive nodes never overlap (angle-aware).
- */
-function arcAngles(count: number, mid: number, baseSpan: number, maxSpan: number, radius: number): number[] {
-  if (count === 0) return []
-  if (count === 1) return [mid]
-  const gap    = nodeGap(mid)
-  const needed = (count - 1) * (gap / radius)
-  const span   = Math.min(maxSpan, Math.max(baseSpan, needed))
-  return Array.from({ length: count }, (_, i) =>
-    mid - span / 2 + (i / (count - 1)) * span
-  )
-}
+const NODE_W   = 134
+const NODE_H   = 32
+const V_GAP    = 7     // vertical gap between nodes in a column
+const H_GAP    = 148   // horizontal gap between columns
+const FOCAL_W  = 92
+const FOCAL_H  = 54
+const PAD      = 32
+const COMP_SEP = 56    // focal bottom → competitor row top
 
 interface LayoutNode extends SCEdge { _x: number; _y: number }
 
 export interface SCGraphProps {
-  ticker:      string
-  legalName:   string
-  edges:       SCEdge[]
-  onNodeClick: (e: SCEdge) => void
+  ticker: string; legalName: string; edges: SCEdge[]; onNodeClick: (e: SCEdge) => void
 }
 
 export function SCGraph({ ticker, legalName, edges, onNodeClick }: SCGraphProps) {
   const [hovered, setHovered] = useState<string | null>(null)
+  const [tf, setTf]           = useState({ x: 0, y: 0, s: 1 })
+  const dragging = useRef(false)
+  const lastPos  = useRef({ x: 0, y: 0 })
+  const svgRef   = useRef<SVGSVGElement>(null)
 
-  // ── Pan / zoom ──────────────────────────────────────────────────────────────
-  const [tf, setTf] = useState({ x: 0, y: 0, s: 1 })
-  const dragging    = useRef(false)
-  const lastPos     = useRef({ x: 0, y: 0 })
-  const svgRef      = useRef<SVGSVGElement>(null)
-
+  // ── Wheel: pinch=zoom anchored to cursor, two-finger scroll=pan ──────────
   useEffect(() => {
     const svg = svgRef.current
     if (!svg) return
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
       if (e.ctrlKey) {
-        // Pinch-to-zoom anchored at cursor
-        const rect   = svg.getBoundingClientRect()
-        const mx     = e.clientX - rect.left
-        const my     = e.clientY - rect.top
-        const factor = Math.exp(-e.deltaY / 300)
+        const { left, top } = svg.getBoundingClientRect()
+        const mx = e.clientX - left, my = e.clientY - top
+        const f  = Math.exp(-e.deltaY / 300)
         setTf(t => {
-          const s2    = Math.max(0.1, Math.min(6, t.s * factor))
-          const ratio = s2 / t.s
-          return { s: s2, x: mx - ratio * (mx - t.x), y: my - ratio * (my - t.y) }
+          const s2 = Math.max(0.1, Math.min(6, t.s * f)), r = s2 / t.s
+          return { s: s2, x: mx - r * (mx - t.x), y: my - r * (my - t.y) }
         })
       } else {
-        // Two-finger scroll → pan
         setTf(t => ({ ...t, x: t.x - e.deltaX, y: t.y - e.deltaY }))
       }
     }
@@ -152,167 +77,152 @@ export function SCGraph({ ticker, legalName, edges, onNodeClick }: SCGraphProps)
 
   const onMouseDown = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     if ((e.target as Element).closest('g[data-node]')) return
-    dragging.current = true
-    lastPos.current  = { x: e.clientX, y: e.clientY }
+    dragging.current = true; lastPos.current = { x: e.clientX, y: e.clientY }
     e.currentTarget.style.cursor = 'grabbing'
   }, [])
   const onMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     if (!dragging.current) return
-    const dx = e.clientX - lastPos.current.x
-    const dy = e.clientY - lastPos.current.y
+    const dx = e.clientX - lastPos.current.x, dy = e.clientY - lastPos.current.y
     lastPos.current = { x: e.clientX, y: e.clientY }
     setTf(t => ({ ...t, x: t.x + dx, y: t.y + dy }))
   }, [])
   const onMouseUp = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
-    dragging.current = false
-    e.currentTarget.style.cursor = 'grab'
+    dragging.current = false; e.currentTarget.style.cursor = 'grab'
   }, [])
   const resetView = useCallback(() => setTf({ x: 0, y: 0, s: 1 }), [])
 
-  // ── Radial layout ───────────────────────────────────────────────────────────
+  // ── Column layout ──────────────────────────────────────────────────────────
   const layout = useMemo(() => {
     const upT2 = edges.filter(e => e.direction === 'UPSTREAM'   && e.tier === 2)
     const upT1 = edges.filter(e => e.direction === 'UPSTREAM'   && (e.tier ?? 1) === 1)
     const down = edges.filter(e => e.direction === 'DOWNSTREAM')
     const comp = edges.filter(e => e.direction === 'COMPETITOR')
 
-    // Scale radius so nodes never overlap (angle-aware minimum)
-    const t1R   = Math.max(R_T1_BASE,   minRadiusForSector(upT1.length, UP_MID,   MAX_SPAN_UP))
-    const t2R   = Math.max(R_T2_BASE,   minRadiusForSector(upT2.length, UP_MID,   MAX_SPAN_UP))
-    const downR = Math.max(R_DOWN_BASE, minRadiusForSector(down.length,  DOWN_MID, MAX_SPAN_DOWN))
-    const compR = Math.max(R_COMP_BASE, minRadiusForSector(comp.length,  COMP_MID, MAX_SPAN_COMP))
+    const colH = (n: number) => n > 0 ? n * NODE_H + (n - 1) * V_GAP : FOCAL_H
+    const mainH = Math.max(colH(upT1.length), colH(upT2.length), colH(down.length), FOCAL_H)
 
-    // Canvas — set focal centre, then compute tight bounding viewBox
-    const CX = Math.max(t2R, t1R) + HW + 32
-    const CY = compR + HH + 48   // leave room for competitor arc below
+    // Build columns left → right
+    const cols: Array<{ nodes: SCEdge[]; cx: number; label: string; color: string }> = []
+    let xCursor = PAD
 
-    function place(nodes: SCEdge[], mid: number, baseSpan: number, maxSpan: number, radius: number): LayoutNode[] {
-      const angles = arcAngles(nodes.length, mid, baseSpan, maxSpan, radius)
+    if (upT2.length > 0) {
+      cols.push({ nodes: upT2, cx: xCursor + NODE_W / 2, label: 'TIER-2',    color: '#00c89640' })
+      xCursor += NODE_W + H_GAP
+    }
+    if (upT1.length > 0) {
+      cols.push({ nodes: upT1, cx: xCursor + NODE_W / 2, label: 'SUPPLIERS', color: '#00c89660' })
+      xCursor += NODE_W + H_GAP
+    }
+
+    const focalCX = xCursor + FOCAL_W / 2
+    const focalCY = PAD + mainH / 2
+    xCursor += FOCAL_W + H_GAP
+
+    if (down.length > 0) {
+      cols.push({ nodes: down, cx: xCursor + NODE_W / 2, label: 'CUSTOMERS', color: '#f59e0b60' })
+      xCursor += NODE_W + PAD
+    } else {
+      xCursor += PAD
+    }
+
+    // Place column nodes (vertically centred around mainH mid-point)
+    function placeCol(nodes: SCEdge[], cx: number): LayoutNode[] {
+      const h = colH(nodes.length)
+      const startY = PAD + (mainH - h) / 2
       return nodes.map((n, i) => ({
         ...n,
-        _x: CX + radius * Math.cos(angles[i]) - HW,
-        _y: CY + radius * Math.sin(angles[i]) - HH,
+        _x: cx - NODE_W / 2,
+        _y: startY + i * (NODE_H + V_GAP),
       } as LayoutNode))
     }
 
-    const t1Nodes   = place(upT1, UP_MID,   80 * DEG, MAX_SPAN_UP,   t1R)
-    const t2Nodes   = place(upT2, UP_MID,   90 * DEG, MAX_SPAN_UP,   t2R)
-    const downNodes = place(down, DOWN_MID, 70 * DEG, MAX_SPAN_DOWN, downR)
-    const compNodes = place(comp, COMP_MID, 60 * DEG, MAX_SPAN_COMP, compR)
+    const placed = cols.flatMap(c => placeCol(c.nodes, c.cx))
 
-    const all = [...t1Nodes, ...t2Nodes, ...downNodes, ...compNodes]
+    // Competitors: horizontal row centred below focal
+    const C_GAP      = 12
+    const compTotalW = comp.length * NODE_W + Math.max(0, comp.length - 1) * C_GAP
+    const compStartX = focalCX - compTotalW / 2
+    const compY      = PAD + mainH + COMP_SEP
+    const compNodes: LayoutNode[] = comp.map((n, i) => ({
+      ...n,
+      _x: compStartX + i * (NODE_W + C_GAP),
+      _y: compY,
+    } as LayoutNode))
+
+    const allNodes = [...placed, ...compNodes]
 
     // Tight viewBox
-    const xs  = all.map(n => n._x)
-    const ys  = all.map(n => n._y)
-    const pad = 24
-    const minX = Math.min(...xs, CX - 60) - pad
-    const minY = Math.min(...ys, CY - 32) - pad
-    const maxX = Math.max(...xs.map(x => x + NODE_W), CX + 60) + pad
-    const maxY = Math.max(...ys.map(y => y + NODE_H), CY + 32) + pad
+    const xs = allNodes.map(n => n._x)
+    const ys = allNodes.map(n => n._y)
+    const vbX = Math.min(...xs, focalCX - FOCAL_W / 2) - PAD
+    const vbY = Math.min(...ys, focalCY - FOCAL_H / 2) - PAD
+    const vbW = Math.max(...xs.map(x => x + NODE_W), focalCX + FOCAL_W / 2, xCursor) + PAD - vbX
+    const vbH = Math.max(...ys.map(y => y + NODE_H), focalCY + FOCAL_H / 2, compY + NODE_H) + PAD + 20 - vbY
 
-    return {
-      t1Nodes, t2Nodes, downNodes, compNodes,
-      CX, CY,
-      VBX: minX, VBY: minY, VBW: maxX - minX, VBH: maxY - minY,
-      t1R, t2R, downR, compR,
-    }
+    return { placed, compNodes, focalCX, focalCY, vbX, vbY, vbW, vbH, cols, compY, mainH }
   }, [edges])
 
-  const { t1Nodes, t2Nodes, downNodes, compNodes, CX, CY, VBX, VBY, VBW, VBH } = layout
-  const allNodes = [...t1Nodes, ...t2Nodes, ...downNodes, ...compNodes]
+  const { placed, compNodes, focalCX, focalCY, vbX, vbY, vbW, vbH, cols, compY } = layout
+  const allNodes = [...placed, ...compNodes]
 
   return (
     <div className="w-full h-full relative overflow-hidden" style={{ minHeight: 240 }}>
-      {/* RESET button */}
-      <button
-        onClick={resetView}
-        className="absolute top-2 right-2 z-10 text-[9px] font-mono tracking-widest px-2 py-1 bg-terminal-surface border border-terminal-border text-terminal-dim hover:text-terminal-text hover:border-terminal-accent/40 rounded-sm transition-colors"
-      >
+      <button onClick={resetView}
+        className="absolute top-2 right-2 z-10 text-[9px] font-mono tracking-widest px-2 py-1 bg-terminal-surface border border-terminal-border text-terminal-dim hover:text-terminal-text hover:border-terminal-accent/40 rounded-sm transition-colors">
         RESET
       </button>
       <div className="absolute bottom-2 right-2 z-10 text-[8px] font-mono text-terminal-dim/30 pointer-events-none select-none">
         pinch to zoom · scroll to pan · drag to pan
       </div>
 
-      <svg
-        ref={svgRef}
-        viewBox={`${VBX} ${VBY} ${VBW} ${VBH}`}
-        width="100%"
-        height="100%"
-        preserveAspectRatio="xMidYMid meet"
+      <svg ref={svgRef}
+        viewBox={`${vbX} ${vbY} ${vbW} ${vbH}`}
+        width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
         style={{ display: 'block', cursor: 'grab', userSelect: 'none' }}
-        onMouseDown={onMouseDown}
-        onMouseMove={onMouseMove}
-        onMouseUp={onMouseUp}
-        onMouseLeave={onMouseUp}
+        onMouseDown={onMouseDown} onMouseMove={onMouseMove}
+        onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
       >
         <defs>
-          {/* Soft glow for focal node */}
           <filter id="sc-glow-f" x="-120%" y="-120%" width="340%" height="340%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="b" />
-            <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+            <feGaussianBlur in="SourceGraphic" stdDeviation="7" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
           </filter>
-          {/* Subtle edge glow on hover */}
-          <filter id="sc-glow-e" x="-30%" y="-30%" width="160%" height="160%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="1.5" result="b" />
-            <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+          <filter id="sc-glow-e" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="1.5" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
           </filter>
-          {/* Arrow markers */}
           {(['UPSTREAM', 'DOWNSTREAM'] as const).map(d => (
             <marker key={d} id={`sc-arr-${d}`} markerWidth={5} markerHeight={5} refX={4} refY={2.5} orient="auto">
-              <path d="M0,0 L0,5 L5,2.5z" fill={DIR[d].edge} fillOpacity={0.5} />
+              <path d="M0,0 L0,5 L5,2.5z" fill={DIR[d].edge} fillOpacity={0.5}/>
             </marker>
           ))}
         </defs>
 
         <g transform={`translate(${tf.x},${tf.y}) scale(${tf.s})`}>
 
-          {/* ── Sector labels ── */}
-          {t1Nodes.length > 0 && (
-            <text x={CX - layout.t1R - 16} y={CY - 4} textAnchor="end"
-              fontSize={7.5} fill="#00c89650" letterSpacing={2} fontFamily="monospace">
-              SUPPLIERS
-            </text>
-          )}
-          {t2Nodes.length > 0 && (
-            <text x={CX - layout.t2R - 16} y={CY - 4} textAnchor="end"
-              fontSize={7} fill="#00c89635" letterSpacing={2} fontFamily="monospace">
-              TIER-2
-            </text>
-          )}
-          {downNodes.length > 0 && (
-            <text x={CX + layout.downR + 16} y={CY - 4} textAnchor="start"
-              fontSize={7.5} fill="#f59e0b50" letterSpacing={2} fontFamily="monospace">
-              CUSTOMERS
-            </text>
-          )}
+          {/* ── Section labels ── */}
+          {cols.map(c => (
+            <text key={c.label} x={c.cx} y={vbY + 18}
+              textAnchor="middle" fontSize={7.5} fill={c.color}
+              letterSpacing={2} fontFamily="monospace">{c.label}</text>
+          ))}
           {compNodes.length > 0 && (
-            <text x={CX} y={CY + layout.compR + NODE_H + 14} textAnchor="middle"
-              fontSize={7.5} fill="#818cf850" letterSpacing={2} fontFamily="monospace">
-              COMPETITORS
-            </text>
+            <text x={focalCX} y={compY + NODE_H + 14}
+              textAnchor="middle" fontSize={7.5} fill="#818cf850"
+              letterSpacing={2} fontFamily="monospace">COMPETITORS</text>
           )}
 
-          {/* ── T1/T2 ring separator arc (visual hint) ── */}
-          {t1Nodes.length > 0 && t2Nodes.length > 0 && (
-            <circle cx={CX} cy={CY} r={(layout.t1R + layout.t2R) / 2}
-              fill="none" stroke="#ffffff08" strokeWidth={1} strokeDasharray="3 8" />
-          )}
-
-          {/* ── Edges ── */}
+          {/* ── Edges (straight, focal centre → node centre) ── */}
           {allNodes.map(e => {
-            const style  = DIR[e.direction as keyof typeof DIR] ?? DIR.COMPETITOR
-            const isHov  = hovered === e.id
-            const exp    = e.pct_revenue ?? e.pct_cogs ?? 0
-            const sw     = isHov ? 1.4 : Math.max(0.5, Math.min(2.0, (exp / 20) * 1.5 + 0.5))
-            const nx     = e._x + HW
-            const ny     = e._y + HH
+            const style = DIR[e.direction as keyof typeof DIR] ?? DIR.COMPETITOR
+            const isHov = hovered === e.id
+            const exp   = e.pct_revenue ?? e.pct_cogs ?? 0
+            const sw    = isHov ? 1.4 : Math.max(0.5, Math.min(2.0, (exp / 20) * 1.5 + 0.5))
+            const nx    = e._x + NODE_W / 2, ny = e._y + NODE_H / 2
             return (
               <line key={`e-${e.id}`}
-                x1={CX} y1={CY} x2={nx} y2={ny}
-                stroke={style.edge}
-                strokeWidth={sw}
+                x1={focalCX} y1={focalCY} x2={nx} y2={ny}
+                stroke={style.edge} strokeWidth={sw}
                 strokeOpacity={isHov ? 0.75 : 0.2}
                 markerEnd={
                   e.direction === 'UPSTREAM'   ? 'url(#sc-arr-UPSTREAM)'   :
@@ -325,22 +235,20 @@ export function SCGraph({ ticker, legalName, edges, onNodeClick }: SCGraphProps)
 
           {/* ── Focal node ── */}
           <g filter="url(#sc-glow-f)">
-            {/* Outer glow ring */}
-            <circle cx={CX} cy={CY} r={38} fill="none" stroke="#00d4ff" strokeWidth={0.5} strokeOpacity={0.3} />
-            <circle cx={CX} cy={CY} r={28} fill="none" stroke="#00d4ff" strokeWidth={0.8} strokeOpacity={0.4} />
-            {/* Core */}
-            <rect x={CX - 44} y={CY - 26} width={88} height={52} rx={5}
-              fill="#030c18" stroke="#00d4ff" strokeWidth={1.5} />
-            {/* Accent top bar */}
-            <rect x={CX - 44} y={CY - 26} width={88} height={3} rx={2}
-              fill="#00d4ff" fillOpacity={0.6} />
-            <text x={CX} y={CY - 4} textAnchor="middle"
-              fontSize={15} fontWeight="bold" fill="#00d4ff" fontFamily="monospace">
-              {ticker}
-            </text>
-            <text x={CX} y={CY + 12} textAnchor="middle"
+            <circle cx={focalCX} cy={focalCY} r={42}
+              fill="none" stroke="#00d4ff" strokeWidth={0.5} strokeOpacity={0.25}/>
+            <circle cx={focalCX} cy={focalCY} r={30}
+              fill="none" stroke="#00d4ff" strokeWidth={0.7} strokeOpacity={0.35}/>
+            <rect x={focalCX - FOCAL_W / 2} y={focalCY - FOCAL_H / 2}
+              width={FOCAL_W} height={FOCAL_H} rx={5}
+              fill="#030c18" stroke="#00d4ff" strokeWidth={1.5}/>
+            <rect x={focalCX - FOCAL_W / 2} y={focalCY - FOCAL_H / 2}
+              width={FOCAL_W} height={3} rx={2} fill="#00d4ff" fillOpacity={0.6}/>
+            <text x={focalCX} y={focalCY - 2} textAnchor="middle"
+              fontSize={16} fontWeight="bold" fill="#00d4ff" fontFamily="monospace">{ticker}</text>
+            <text x={focalCX} y={focalCY + 14} textAnchor="middle"
               fontSize={7} fill="#4a5568" fontFamily="monospace">
-              {legalName.length > 22 ? legalName.slice(0, 20) + '…' : legalName}
+              {legalName.length > 20 ? legalName.slice(0, 19) + '…' : legalName}
             </text>
           </g>
 
@@ -351,11 +259,9 @@ export function SCGraph({ ticker, legalName, edges, onNodeClick }: SCGraphProps)
             const isHov  = hovered === e.id
             const exp    = e.pct_revenue ?? e.pct_cogs ?? 0
             const expStr = exp > 0 ? `${exp.toFixed(1)}%` : ''
-            // Max chars that fit inside node (approx 6.5px per char at fontSize 7.5)
-            const maxChars = Math.floor((NODE_W - (expStr ? 40 : 18)) / 6.4)
-            const name = e.entity_name.length > maxChars
-              ? e.entity_name.slice(0, maxChars - 1) + '…'
-              : e.entity_name
+            const maxCh  = Math.floor((NODE_W - (expStr ? 44 : 18)) / 6.3)
+            const name   = e.entity_name.length > maxCh
+              ? e.entity_name.slice(0, maxCh - 1) + '…' : e.entity_name
 
             return (
               <g key={`n-${e.id}`} data-node="1" style={{ cursor: 'pointer' }}
@@ -363,38 +269,21 @@ export function SCGraph({ ticker, legalName, edges, onNodeClick }: SCGraphProps)
                 onMouseLeave={() => setHovered(null)}
                 onClick={() => onNodeClick(e)}
               >
-                {/* Card background */}
                 <rect x={e._x} y={e._y} width={NODE_W} height={NODE_H} rx={3}
                   fill={isHov ? style.bg + 'dd' : style.bg}
                   stroke={isHov ? style.border : style.border + '60'}
-                  strokeWidth={isHov ? 1 : 0.6}
-                />
-                {/* Left risk accent bar */}
+                  strokeWidth={isHov ? 1 : 0.6}/>
                 <rect x={e._x} y={e._y} width={2.5} height={NODE_H} rx={1.5}
-                  fill={RISK_COLOR[risk]} fillOpacity={0.9} />
-
-                {/* Entity name */}
+                  fill={RISK_COLOR[risk]} fillOpacity={0.9}/>
                 <text x={e._x + 9} y={e._y + NODE_H * 0.52}
-                  dominantBaseline="middle"
-                  fontSize={7.5}
+                  dominantBaseline="middle" fontSize={7.5}
                   fill={isHov ? style.text : style.text + 'bb'}
-                  fontFamily="monospace"
-                  fontWeight="500"
-                >
-                  {name}
-                </text>
-
-                {/* Exposure % (right-aligned) */}
+                  fontFamily="monospace" fontWeight="500">{name}</text>
                 {expStr && (
                   <text x={e._x + NODE_W - 5} y={e._y + NODE_H * 0.52}
-                    dominantBaseline="middle"
-                    fontSize={7} textAnchor="end"
-                    fill={style.border + 'aa'} fontFamily="monospace">
-                    {expStr}
-                  </text>
+                    dominantBaseline="middle" fontSize={7} textAnchor="end"
+                    fill={style.border + 'aa'} fontFamily="monospace">{expStr}</text>
                 )}
-
-                {/* Country + tier sub-label */}
                 {(e.hq_country || e.tier === 2) && (
                   <text x={e._x + 9} y={e._y + NODE_H - 5}
                     fontSize={6} fill="#3a4a5a" fontFamily="monospace">
