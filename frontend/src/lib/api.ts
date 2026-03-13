@@ -87,6 +87,11 @@ export const api = {
     graph:   (ticker: string) =>
       req<{ nodes: SCNode[]; links: SCLink[]; company: SCCompany }>(`${BASE}/splc/${ticker}/graph`),
   },
+
+  company: {
+    get:     (ticker: string) => req<CompanyProfile>(`${BASE}/company/${ticker}`),
+    refresh: (ticker: string) => post<CompanyProfile>(`${BASE}/company/${ticker}/refresh`, {}),
+  },
 }
 
 // ─── Extra types ───────────────────────────────────────────────────────────
@@ -219,6 +224,76 @@ export interface SCLink {
   pct_revenue:       number | null
   pct_cogs:          number | null
   evidence:          string | null
+}
+
+// ─── Company Profile ───────────────────────────────────────────────────────
+
+export interface CompanyIndustry {
+  label: string
+  type:  'SECTOR' | 'INDUSTRY' | 'SIC' | 'GICS_INDUSTRY' | 'GICS_SECTOR'
+}
+
+export interface CompanyShareholder {
+  name:          string
+  shares:        number
+  pct_held:      number
+  value:         number
+  date_reported?: string
+  type:          'INSTITUTION' | 'MUTUAL_FUND'
+}
+
+export interface AnalystRating {
+  firm:       string
+  action:     string
+  from_grade: string
+  to_grade:   string
+  rating:     'BUY' | 'HOLD' | 'SELL'
+  date:       string
+}
+
+export interface BoardMember {
+  name:      string
+  title:     string
+  since:     number | null
+  age:       number | null
+  total_pay: number | null
+  bio:       string | null
+}
+
+export interface CompanyProfile {
+  ticker:               string
+  name:                 string
+  description:          string
+  website:              string
+  exchange:             string
+  currency:             string
+  country:              string
+  employees:            number | null
+  market_cap:           number | null
+  current_price:        number | null
+  pe_ratio:             number | null
+  forward_pe:           number | null
+  dividend_yield:       number
+  beta:                 number | null
+  fifty_two_week_high:  number | null
+  fifty_two_week_low:   number | null
+  avg_volume:           number | null
+  industries: CompanyIndustry[]
+  shareholders: {
+    insider_pct:     number
+    institution_pct: number
+    float_shares:    number | null
+    institutions:    CompanyShareholder[]
+    mutual_funds:    CompanyShareholder[]
+  }
+  analysts: {
+    rating_counts:  { buy: number; hold: number; sell: number }
+    price_target:   { current: number; mean: number; high: number; low: number }
+    total_analysts: number
+    recommendation: string
+    recent:         AnalystRating[]
+  }
+  board: BoardMember[]
 }
 
 export interface SystemStats {
