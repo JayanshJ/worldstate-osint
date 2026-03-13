@@ -65,7 +65,46 @@ function buildMetaNodes(profile: CompanyProfile): SCEdge[] {
     as_of_date:        null,
   }))
 
-  return [...shareholders, ...board]
+  // Deduplicate analysts by firm, keep most recent rating
+  const firmMap = new Map<string, typeof profile.analysts.recent[number]>()
+  for (const r of profile.analysts.recent) {
+    if (!firmMap.has(r.firm) || r.date > firmMap.get(r.firm)!.date) firmMap.set(r.firm, r)
+  }
+  const analysts: SCEdge[] = Array.from(firmMap.values()).slice(0, 10).map((r, i) => ({
+    id:                `an-${i}-${r.firm}`,
+    entity_name:       r.firm,
+    entity_ticker:     null,
+    direction:         'ANALYST' as const,
+    relationship_type: r.rating,           // 'BUY' | 'HOLD' | 'SELL'
+    tier:              null,
+    pct_revenue:       null,
+    pct_cogs:          null,
+    sole_source:       false,
+    disclosure_type:   'DISCLOSED' as const,
+    confidence:        1,
+    evidence:          `${r.action}: ${r.from_grade} → ${r.to_grade}`,
+    hq_country:        null,
+    as_of_date:        r.date,
+  }))
+
+  const industries: SCEdge[] = profile.industries.map((ind, i) => ({
+    id:                `ind-${i}-${ind.label}`,
+    entity_name:       ind.label,
+    entity_ticker:     null,
+    direction:         'INDUSTRY' as const,
+    relationship_type: ind.type,
+    tier:              null,
+    pct_revenue:       null,
+    pct_cogs:          null,
+    sole_source:       false,
+    disclosure_type:   'DISCLOSED' as const,
+    confidence:        1,
+    evidence:          null,
+    hq_country:        null,
+    as_of_date:        null,
+  }))
+
+  return [...shareholders, ...board, ...analysts, ...industries]
 }
 
 // ─── Risk helpers ─────────────────────────────────────────────────────────
@@ -177,6 +216,73 @@ function EvidenceDrawer({ edge, onClose }: { edge: SCEdge; onClose: () => void }
               <p className="text-[10px] font-mono text-terminal-dim leading-relaxed">{edge.evidence}</p>
             </div>
           )}
+        </div>
+      </motion.div>
+    )
+  }
+
+  // Analyst drawer
+  if (edge.direction === 'ANALYST') {
+    const ratingColor = { BUY: '#22c55e', HOLD: '#f59e0b', SELL: '#ef4444' }[edge.relationship_type ?? ''] ?? '#a78bfa'
+    return (
+      <motion.div
+        initial={{ x: 380, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 380, opacity: 0 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+        className="w-[360px] flex-shrink-0 border-l border-terminal-border flex flex-col bg-terminal-bg overflow-hidden"
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-terminal-border bg-terminal-surface flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full" style={{ background: ratingColor }} />
+            <span className="font-mono font-bold text-sm text-terminal-text truncate max-w-[240px]">{edge.entity_name}</span>
+          </div>
+          <button onClick={onClose} className="text-terminal-dim hover:text-terminal-text transition-colors"><X size={14} /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-4">
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { label: 'FIRM',   value: edge.entity_name },
+              { label: 'RATING', value: edge.relationship_type ?? '—', style: { color: ratingColor } },
+              { label: 'DATE',   value: edge.as_of_date ?? '—' },
+              ...(edge.evidence ? [{ label: 'ACTION', value: edge.evidence }] : []),
+            ].map(({ label, value, style }) => (
+              <div key={label} className="bg-terminal-surface/50 rounded-sm px-3 py-2">
+                <div className="text-[8px] font-mono text-terminal-dim tracking-widest mb-0.5">{label}</div>
+                <div className="text-[11px] font-mono text-terminal-text" style={style}>{value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </motion.div>
+    )
+  }
+
+  // Industry drawer
+  if (edge.direction === 'INDUSTRY') {
+    return (
+      <motion.div
+        initial={{ x: 380, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 380, opacity: 0 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+        className="w-[360px] flex-shrink-0 border-l border-terminal-border flex flex-col bg-terminal-bg overflow-hidden"
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-terminal-border bg-terminal-surface flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full" style={{ background: '#06b6d4' }} />
+            <span className="font-mono font-bold text-sm text-terminal-text truncate max-w-[240px]">{edge.entity_name}</span>
+          </div>
+          <button onClick={onClose} className="text-terminal-dim hover:text-terminal-text transition-colors"><X size={14} /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-4">
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { label: 'CLASSIFICATION', value: (edge.relationship_type ?? '').replace('GICS_', '').replace(/_/g, ' ') || '—' },
+              { label: 'LABEL', value: edge.entity_name },
+            ].map(({ label, value }) => (
+              <div key={label} className="bg-terminal-surface/50 rounded-sm px-3 py-2">
+                <div className="text-[8px] font-mono text-terminal-dim tracking-widest mb-0.5">{label}</div>
+                <div className="text-[11px] font-mono text-terminal-text">{value}</div>
+              </div>
+            ))}
+          </div>
         </div>
       </motion.div>
     )

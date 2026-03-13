@@ -2,11 +2,11 @@
  * SCGraph — Bloomberg-style stakeholder network.
  *
  * Layout (left → right):
- *   [T2 Suppliers] → [T1 Suppliers] → [FOCAL] → [Customers] → [Shareholders] → [Board]
+ *   [T2 Suppliers] → [T1 Suppliers] → [FOCAL] → [Customers] → [Shareholders] → [Board] → [Analysts] → [Industries]
  *                                         ↓
  *                                   [Competitors row]
  *
- * Directions:  UPSTREAM · DOWNSTREAM · COMPETITOR · SHAREHOLDER · BOARD
+ * Directions:  UPSTREAM · DOWNSTREAM · COMPETITOR · SHAREHOLDER · BOARD · ANALYST · INDUSTRY
  */
 
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react'
@@ -19,6 +19,12 @@ const DIR: Record<string, { bg: string; border: string; text: string; edge: stri
   COMPETITOR:  { bg: '#08081a', border: '#818cf8', text: '#a5b4fc', edge: '#818cf8' },
   SHAREHOLDER: { bg: '#0f0900', border: '#eab308', text: '#fde047', edge: '#eab308' },
   BOARD:       { bg: '#130818', border: '#e879f9', text: '#f0abfc', edge: '#e879f9' },
+  ANALYST:     { bg: '#0a0818', border: '#a78bfa', text: '#c4b5fd', edge: '#a78bfa' },
+  INDUSTRY:    { bg: '#040e10', border: '#06b6d4', text: '#67e8f9', edge: '#06b6d4' },
+}
+
+const RATING_COLOR: Record<string, string> = {
+  BUY: '#22c55e', HOLD: '#f59e0b', SELL: '#ef4444',
 }
 
 const RISK_COLOR = { HIGH: '#ef4444', MEDIUM: '#f97316', LOW: '#22c55e', NONE: '#334155' }
@@ -93,17 +99,19 @@ export function SCGraph({ ticker, legalName, edges, onNodeClick }: SCGraphProps)
 
   // ── Layout ──────────────────────────────────────────────────────────────────
   const layout = useMemo(() => {
-    const upT2  = edges.filter(e => e.direction === 'UPSTREAM'    && e.tier === 2)
-    const upT1  = edges.filter(e => e.direction === 'UPSTREAM'    && (e.tier ?? 1) === 1)
-    const down  = edges.filter(e => e.direction === 'DOWNSTREAM')
-    const comp  = edges.filter(e => e.direction === 'COMPETITOR')
-    const share = edges.filter(e => e.direction === 'SHAREHOLDER')
-    const board = edges.filter(e => e.direction === 'BOARD')
+    const upT2    = edges.filter(e => e.direction === 'UPSTREAM'    && e.tier === 2)
+    const upT1    = edges.filter(e => e.direction === 'UPSTREAM'    && (e.tier ?? 1) === 1)
+    const down    = edges.filter(e => e.direction === 'DOWNSTREAM')
+    const comp    = edges.filter(e => e.direction === 'COMPETITOR')
+    const share   = edges.filter(e => e.direction === 'SHAREHOLDER')
+    const board   = edges.filter(e => e.direction === 'BOARD')
+    const analyst = edges.filter(e => e.direction === 'ANALYST')
+    const industry= edges.filter(e => e.direction === 'INDUSTRY')
 
     const colH = (n: number) => n > 0 ? n * NODE_H + (n - 1) * V_GAP : FOCAL_H
     const mainH = Math.max(
       colH(upT1.length), colH(upT2.length), colH(down.length),
-      colH(share.length), colH(board.length), FOCAL_H,
+      colH(share.length), colH(board.length), colH(analyst.length), colH(industry.length), FOCAL_H,
     )
 
     type ColDef = { nodes: SCEdge[]; cx: number; label: string; color: string }
@@ -132,7 +140,15 @@ export function SCGraph({ ticker, legalName, edges, onNodeClick }: SCGraphProps)
       x += NODE_W + H_GAP
     }
     if (board.length > 0) {
-      cols.push({ nodes: board, cx: x + NODE_W / 2, label: 'BOARD',       color: '#e879f960' })
+      cols.push({ nodes: board,    cx: x + NODE_W / 2, label: 'BOARD',     color: '#e879f960' })
+      x += NODE_W + H_GAP
+    }
+    if (analyst.length > 0) {
+      cols.push({ nodes: analyst,  cx: x + NODE_W / 2, label: 'ANALYSTS',  color: '#a78bfa60' })
+      x += NODE_W + H_GAP
+    }
+    if (industry.length > 0) {
+      cols.push({ nodes: industry, cx: x + NODE_W / 2, label: 'INDUSTRIES',color: '#06b6d460' })
       x += NODE_W + PAD
     } else {
       x += PAD
@@ -229,7 +245,7 @@ export function SCGraph({ ticker, legalName, edges, onNodeClick }: SCGraphProps)
                 x1={focalCX} y1={focalCY} x2={nx} y2={ny}
                 stroke={style.edge} strokeWidth={sw}
                 strokeOpacity={isHov ? 0.75 : 0.18}
-                strokeDasharray={e.direction === 'SHAREHOLDER' || e.direction === 'BOARD' ? '4 3' : undefined}
+                strokeDasharray={['SHAREHOLDER','BOARD','ANALYST','INDUSTRY'].includes(e.direction) ? '4 3' : undefined}
                 markerEnd={
                   e.direction === 'UPSTREAM'   ? 'url(#sc-arr-UPSTREAM)'   :
                   e.direction === 'DOWNSTREAM' ? 'url(#sc-arr-DOWNSTREAM)' : undefined
@@ -265,18 +281,28 @@ export function SCGraph({ ticker, legalName, edges, onNodeClick }: SCGraphProps)
             const isHov  = hovered === e.id
             const isSH   = e.direction === 'SHAREHOLDER'
             const isBD   = e.direction === 'BOARD'
+            const isAN   = e.direction === 'ANALYST'
+            const isIN   = e.direction === 'INDUSTRY'
+            const isMeta = isSH || isBD || isAN || isIN
             const exp    = e.pct_revenue ?? e.pct_cogs ?? 0
-            // Right-side metric: ownership % for shareholders, nothing for board
-            const expStr = isBD ? '' : exp > 0 ? `${exp.toFixed(1)}%` : ''
+            // Right-side metric: ownership % for shareholders only
+            const expStr = isMeta && !isSH ? '' : exp > 0 ? `${exp.toFixed(1)}%` : ''
             const maxCh  = Math.floor((NODE_W - (expStr ? 44 : 18)) / 6.3)
             const name   = e.entity_name.length > maxCh
               ? e.entity_name.slice(0, maxCh - 1) + '…' : e.entity_name
-            // Sub-label: title for board, type badge for shareholders, country/tier otherwise
             const subLabel = isBD
               ? (e.relationship_type || '').replace(/_/g, ' ')
               : isSH
-                ? (e.relationship_type === 'MUTUAL_FUND' ? 'MF' : e.relationship_type === 'INSTITUTION' ? 'INST' : '')
-                : [e.hq_country, e.tier === 2 ? 'T2' : ''].filter(Boolean).join(' · ')
+                ? (e.relationship_type === 'MUTUAL_FUND' ? 'MF' : 'INST')
+                : isAN
+                  ? (e.relationship_type || '')   // BUY / HOLD / SELL
+                  : isIN
+                    ? (e.relationship_type?.replace('GICS_', '').replace('_', ' ') || '')
+                    : [e.hq_country, e.tier === 2 ? 'T2' : ''].filter(Boolean).join(' · ')
+            // Left accent bar: rating colour for analysts, direction colour for other meta
+            const accentColor = isAN
+              ? (RATING_COLOR[e.relationship_type ?? ''] ?? style.border)
+              : isMeta ? style.border : RISK_COLOR[risk]
 
             return (
               <g key={`n-${e.id}`} data-node="1" style={{ cursor: 'pointer' }}
@@ -288,9 +314,9 @@ export function SCGraph({ ticker, legalName, edges, onNodeClick }: SCGraphProps)
                   fill={isHov ? style.bg + 'dd' : style.bg}
                   stroke={isHov ? style.border : style.border + '60'}
                   strokeWidth={isHov ? 1 : 0.6}/>
-                {/* Left accent bar — risk colour for SC nodes, direction colour for meta nodes */}
+                {/* Left accent bar */}
                 <rect x={e._x} y={e._y} width={2.5} height={NODE_H} rx={1.5}
-                  fill={isSH || isBD ? style.border : RISK_COLOR[risk]} fillOpacity={0.9}/>
+                  fill={accentColor} fillOpacity={0.9}/>
                 {/* Name */}
                 <text x={e._x + 9} y={e._y + NODE_H * 0.42}
                   dominantBaseline="middle" fontSize={7.5}
@@ -305,7 +331,7 @@ export function SCGraph({ ticker, legalName, edges, onNodeClick }: SCGraphProps)
                 {/* Sub-label */}
                 {subLabel && (
                   <text x={e._x + 9} y={e._y + NODE_H - 6}
-                    fontSize={6} fill={isSH || isBD ? style.border + '80' : '#3a4a5a'}
+                    fontSize={6} fill={isMeta ? (isAN ? accentColor + 'cc' : style.border + '80') : '#3a4a5a'}
                     fontFamily="monospace">
                     {subLabel.length > 22 ? subLabel.slice(0, 21) + '…' : subLabel}
                   </text>
