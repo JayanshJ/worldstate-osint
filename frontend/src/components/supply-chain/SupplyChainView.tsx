@@ -18,13 +18,55 @@ import {
   Search, Loader2, AlertTriangle, X,
   GitBranch, Table2, Trash2, RefreshCw, BarChart2,
 } from 'lucide-react'
-import { api, type SCCompany, type SCEdge, type SCSearchResult } from '@/lib/api'
+import { api, type SCCompany, type SCEdge, type SCSearchResult, type CompanyProfile } from '@/lib/api'
 import { SCGraph }  from './SCGraph'
 import { SCTable }  from './SCTable'
 import { SCIntel }  from './SCIntel'
 import { cn }       from '@/lib/utils'
 
 type ViewTab = 'graph' | 'table' | 'intel'
+
+// ─── Corporate meta nodes ─────────────────────────────────────────────────
+function buildMetaNodes(profile: CompanyProfile): SCEdge[] {
+  const shareholders: SCEdge[] = [
+    ...profile.shareholders.institutions.slice(0, 6),
+    ...profile.shareholders.mutual_funds.slice(0, 4),
+  ].map((sh, i) => ({
+    id:                `sh-${i}-${sh.name}`,
+    entity_name:       sh.name,
+    entity_ticker:     null,
+    direction:         'SHAREHOLDER' as const,
+    relationship_type: sh.type,
+    tier:              null,
+    pct_revenue:       sh.pct_held,
+    pct_cogs:          null,
+    sole_source:       false,
+    disclosure_type:   'DISCLOSED' as const,
+    confidence:        1,
+    evidence:          null,
+    hq_country:        null,
+    as_of_date:        sh.date_reported ?? null,
+  }))
+
+  const board: SCEdge[] = profile.board.slice(0, 10).map((m, i) => ({
+    id:                `bd-${i}-${m.name}`,
+    entity_name:       m.name,
+    entity_ticker:     null,
+    direction:         'BOARD' as const,
+    relationship_type: m.title,
+    tier:              null,
+    pct_revenue:       null,
+    pct_cogs:          null,
+    sole_source:       false,
+    disclosure_type:   'DISCLOSED' as const,
+    confidence:        1,
+    evidence:          m.bio ?? null,
+    hq_country:        null,
+    as_of_date:        null,
+  }))
+
+  return [...shareholders, ...board]
+}
 
 // ─── Risk helpers ─────────────────────────────────────────────────────────
 function riskLevel(e: SCEdge) {
@@ -37,9 +79,110 @@ function riskLevel(e: SCEdge) {
 
 // ─── Evidence drawer ─────────────────────────────────────────────────────
 function EvidenceDrawer({ edge, onClose }: { edge: SCEdge; onClose: () => void }) {
-  const { level, color } = riskLevel(edge)
-  const exp = edge.pct_revenue ?? edge.pct_cogs
+  const isShareholder = edge.direction === 'SHAREHOLDER'
+  const isBoard       = edge.direction === 'BOARD'
+  const isMeta        = isShareholder || isBoard
 
+  const metaColor = isShareholder ? '#eab308' : isBoard ? '#e879f9' : undefined
+  const { level, color } = isMeta ? { level: '—', color: metaColor! } : riskLevel(edge)
+
+  // Shareholder drawer
+  if (isShareholder) {
+    const pct = edge.pct_revenue ?? 0
+    const holderType = edge.relationship_type === 'MUTUAL_FUND' ? 'Mutual Fund' : 'Institution'
+    return (
+      <motion.div
+        initial={{ x: 380, opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        exit={{ x: 380, opacity: 0 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+        className="w-[360px] flex-shrink-0 border-l border-terminal-border flex flex-col bg-terminal-bg overflow-hidden"
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-terminal-border bg-terminal-surface flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full" style={{ background: color }} />
+            <span className="font-mono font-bold text-sm text-terminal-text truncate max-w-[240px]">
+              {edge.entity_name}
+            </span>
+          </div>
+          <button onClick={onClose} className="text-terminal-dim hover:text-terminal-text transition-colors">
+            <X size={14} />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-4">
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { label: 'TYPE',      value: holderType },
+              { label: 'OWNERSHIP', value: pct > 0 ? `${pct.toFixed(2)}%` : '—', style: { color: '#eab308' } },
+            ].map(({ label, value, style }) => (
+              <div key={label} className="bg-terminal-surface/50 rounded-sm px-3 py-2">
+                <div className="text-[8px] font-mono text-terminal-dim tracking-widest mb-0.5">{label}</div>
+                <div className="text-[11px] font-mono text-terminal-text" style={style}>{value}</div>
+              </div>
+            ))}
+          </div>
+          {pct > 0 && (
+            <div>
+              <div className="text-[9px] font-mono text-terminal-dim tracking-widest mb-1">OWNERSHIP STAKE</div>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-1.5 bg-terminal-border rounded-full overflow-hidden">
+                  <div className="h-full rounded-full" style={{ width: `${Math.min(pct * 5, 100)}%`, background: '#eab308' }} />
+                </div>
+                <span className="text-[10px] font-mono text-terminal-dim">{pct.toFixed(2)}%</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </motion.div>
+    )
+  }
+
+  // Board member drawer
+  if (isBoard) {
+    const title = (edge.relationship_type ?? '').replace(/_/g, ' ')
+    return (
+      <motion.div
+        initial={{ x: 380, opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        exit={{ x: 380, opacity: 0 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+        className="w-[360px] flex-shrink-0 border-l border-terminal-border flex flex-col bg-terminal-bg overflow-hidden"
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-terminal-border bg-terminal-surface flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full" style={{ background: color }} />
+            <span className="font-mono font-bold text-sm text-terminal-text truncate max-w-[240px]">
+              {edge.entity_name}
+            </span>
+          </div>
+          <button onClick={onClose} className="text-terminal-dim hover:text-terminal-text transition-colors">
+            <X size={14} />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-4">
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { label: 'ROLE',  value: title || '—' },
+              { label: 'BOARD', value: 'Member' },
+            ].map(({ label, value }) => (
+              <div key={label} className="bg-terminal-surface/50 rounded-sm px-3 py-2">
+                <div className="text-[8px] font-mono text-terminal-dim tracking-widest mb-0.5">{label}</div>
+                <div className="text-[11px] font-mono text-terminal-text">{value}</div>
+              </div>
+            ))}
+          </div>
+          {edge.evidence && (
+            <div>
+              <div className="text-[9px] font-mono text-terminal-dim tracking-widest mb-1.5">BIO</div>
+              <p className="text-[10px] font-mono text-terminal-dim leading-relaxed">{edge.evidence}</p>
+            </div>
+          )}
+        </div>
+      </motion.div>
+    )
+  }
+
+  // Standard supply chain drawer
   return (
     <motion.div
       initial={{ x: 380, opacity: 0 }}
@@ -211,7 +354,13 @@ export function SupplyChainView() {
     try {
       const data = await api.splc.get(ticker)
       setCompany(data.company)
-      setEdges(data.edges)
+      // Silently fetch company profile to inject shareholders + board as nodes
+      const allEdges = [...data.edges]
+      try {
+        const profile = await api.company.get(ticker)
+        allEdges.push(...buildMetaNodes(profile))
+      } catch { /* profile unavailable — show SC data without meta nodes */ }
+      setEdges(allEdges)
       setLoading(false)
     } catch (e: unknown) {
       const msg = (e as { message?: string })?.message ?? ''
@@ -255,7 +404,13 @@ export function SupplyChainView() {
     setSelected(null)
     try {
       const data = await api.splc.get(t)
-      setCompany(data.company); setEdges(data.edges)
+      setCompany(data.company)
+      const allEdges = [...data.edges]
+      try {
+        const profile = await api.company.get(t)
+        allEdges.push(...buildMetaNodes(profile))
+      } catch { /* profile unavailable */ }
+      setEdges(allEdges)
       setLoading(false)
     } catch (e: unknown) {
       const msg = (e as { message?: string })?.message ?? ''

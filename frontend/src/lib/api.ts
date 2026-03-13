@@ -189,7 +189,7 @@ export interface SCEdge {
   id:                string
   entity_name:       string
   entity_ticker:     string | null
-  direction:         'UPSTREAM' | 'DOWNSTREAM' | 'COMPETITOR'
+  direction:         'UPSTREAM' | 'DOWNSTREAM' | 'COMPETITOR' | 'SHAREHOLDER' | 'BOARD'
   relationship_type: string | null
   tier:              number | null
   pct_revenue:       number | null

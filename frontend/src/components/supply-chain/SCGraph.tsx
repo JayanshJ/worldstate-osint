@@ -1,24 +1,25 @@
 /**
- * SCGraph — Bloomberg-style supply-chain network.
+ * SCGraph — Bloomberg-style stakeholder network.
  *
- * Layout:
- *   [T2 col] → [T1 col] → [FOCAL] → [Downstream col]
- *                              ↓
- *                       [Competitors row]
+ * Layout (left → right):
+ *   [T2 Suppliers] → [T1 Suppliers] → [FOCAL] → [Customers] → [Shareholders] → [Board]
+ *                                         ↓
+ *                                   [Competitors row]
  *
- * Straight radiating edges, Bloomberg colour palette, glow focal node.
- * Column layout guarantees zero overlap regardless of node count.
+ * Directions:  UPSTREAM · DOWNSTREAM · COMPETITOR · SHAREHOLDER · BOARD
  */
 
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react'
 import type { SCEdge } from '@/lib/api'
 
-// ─── Colour palette ───────────────────────────────────────────────────────────
-const DIR = {
-  UPSTREAM:   { bg: '#040f0a', border: '#00c896', text: '#6ee7c7', edge: '#00c896' },
-  DOWNSTREAM: { bg: '#100900', border: '#f59e0b', text: '#fcd34d', edge: '#f59e0b' },
-  COMPETITOR: { bg: '#08081a', border: '#818cf8', text: '#a5b4fc', edge: '#818cf8' },
-} as const
+// ─── Colour palette per direction ─────────────────────────────────────────────
+const DIR: Record<string, { bg: string; border: string; text: string; edge: string }> = {
+  UPSTREAM:    { bg: '#040f0a', border: '#00c896', text: '#6ee7c7', edge: '#00c896' },
+  DOWNSTREAM:  { bg: '#100900', border: '#f59e0b', text: '#fcd34d', edge: '#f59e0b' },
+  COMPETITOR:  { bg: '#08081a', border: '#818cf8', text: '#a5b4fc', edge: '#818cf8' },
+  SHAREHOLDER: { bg: '#0f0900', border: '#eab308', text: '#fde047', edge: '#eab308' },
+  BOARD:       { bg: '#130818', border: '#e879f9', text: '#f0abfc', edge: '#e879f9' },
+}
 
 const RISK_COLOR = { HIGH: '#ef4444', MEDIUM: '#f97316', LOW: '#22c55e', NONE: '#334155' }
 
@@ -33,12 +34,12 @@ function riskOf(e: SCEdge): keyof typeof RISK_COLOR {
 // ─── Layout constants ─────────────────────────────────────────────────────────
 const NODE_W   = 134
 const NODE_H   = 32
-const V_GAP    = 7     // vertical gap between nodes in a column
-const H_GAP    = 148   // horizontal gap between columns
+const V_GAP    = 7
+const H_GAP    = 148
 const FOCAL_W  = 92
 const FOCAL_H  = 54
 const PAD      = 32
-const COMP_SEP = 56    // focal bottom → competitor row top
+const COMP_SEP = 56
 
 interface LayoutNode extends SCEdge { _x: number; _y: number }
 
@@ -53,7 +54,6 @@ export function SCGraph({ ticker, legalName, edges, onNodeClick }: SCGraphProps)
   const lastPos  = useRef({ x: 0, y: 0 })
   const svgRef   = useRef<SVGSVGElement>(null)
 
-  // ── Wheel: pinch=zoom anchored to cursor, two-finger scroll=pan ──────────
   useEffect(() => {
     const svg = svgRef.current
     if (!svg) return
@@ -91,75 +91,80 @@ export function SCGraph({ ticker, legalName, edges, onNodeClick }: SCGraphProps)
   }, [])
   const resetView = useCallback(() => setTf({ x: 0, y: 0, s: 1 }), [])
 
-  // ── Column layout ──────────────────────────────────────────────────────────
+  // ── Layout ──────────────────────────────────────────────────────────────────
   const layout = useMemo(() => {
-    const upT2 = edges.filter(e => e.direction === 'UPSTREAM'   && e.tier === 2)
-    const upT1 = edges.filter(e => e.direction === 'UPSTREAM'   && (e.tier ?? 1) === 1)
-    const down = edges.filter(e => e.direction === 'DOWNSTREAM')
-    const comp = edges.filter(e => e.direction === 'COMPETITOR')
+    const upT2  = edges.filter(e => e.direction === 'UPSTREAM'    && e.tier === 2)
+    const upT1  = edges.filter(e => e.direction === 'UPSTREAM'    && (e.tier ?? 1) === 1)
+    const down  = edges.filter(e => e.direction === 'DOWNSTREAM')
+    const comp  = edges.filter(e => e.direction === 'COMPETITOR')
+    const share = edges.filter(e => e.direction === 'SHAREHOLDER')
+    const board = edges.filter(e => e.direction === 'BOARD')
 
     const colH = (n: number) => n > 0 ? n * NODE_H + (n - 1) * V_GAP : FOCAL_H
-    const mainH = Math.max(colH(upT1.length), colH(upT2.length), colH(down.length), FOCAL_H)
+    const mainH = Math.max(
+      colH(upT1.length), colH(upT2.length), colH(down.length),
+      colH(share.length), colH(board.length), FOCAL_H,
+    )
 
-    // Build columns left → right
-    const cols: Array<{ nodes: SCEdge[]; cx: number; label: string; color: string }> = []
-    let xCursor = PAD
+    type ColDef = { nodes: SCEdge[]; cx: number; label: string; color: string }
+    const cols: ColDef[] = []
+    let x = PAD
 
     if (upT2.length > 0) {
-      cols.push({ nodes: upT2, cx: xCursor + NODE_W / 2, label: 'TIER-2',    color: '#00c89640' })
-      xCursor += NODE_W + H_GAP
+      cols.push({ nodes: upT2, cx: x + NODE_W / 2, label: 'TIER-2',       color: '#00c89640' })
+      x += NODE_W + H_GAP
     }
     if (upT1.length > 0) {
-      cols.push({ nodes: upT1, cx: xCursor + NODE_W / 2, label: 'SUPPLIERS', color: '#00c89660' })
-      xCursor += NODE_W + H_GAP
+      cols.push({ nodes: upT1, cx: x + NODE_W / 2, label: 'SUPPLIERS',    color: '#00c89660' })
+      x += NODE_W + H_GAP
     }
 
-    const focalCX = xCursor + FOCAL_W / 2
+    const focalCX = x + FOCAL_W / 2
     const focalCY = PAD + mainH / 2
-    xCursor += FOCAL_W + H_GAP
+    x += FOCAL_W + H_GAP
 
     if (down.length > 0) {
-      cols.push({ nodes: down, cx: xCursor + NODE_W / 2, label: 'CUSTOMERS', color: '#f59e0b60' })
-      xCursor += NODE_W + PAD
+      cols.push({ nodes: down,  cx: x + NODE_W / 2, label: 'CUSTOMERS',   color: '#f59e0b60' })
+      x += NODE_W + H_GAP
+    }
+    if (share.length > 0) {
+      cols.push({ nodes: share, cx: x + NODE_W / 2, label: 'SHAREHOLDERS',color: '#eab30860' })
+      x += NODE_W + H_GAP
+    }
+    if (board.length > 0) {
+      cols.push({ nodes: board, cx: x + NODE_W / 2, label: 'BOARD',       color: '#e879f960' })
+      x += NODE_W + PAD
     } else {
-      xCursor += PAD
+      x += PAD
     }
 
-    // Place column nodes (vertically centred around mainH mid-point)
     function placeCol(nodes: SCEdge[], cx: number): LayoutNode[] {
       const h = colH(nodes.length)
       const startY = PAD + (mainH - h) / 2
       return nodes.map((n, i) => ({
-        ...n,
-        _x: cx - NODE_W / 2,
-        _y: startY + i * (NODE_H + V_GAP),
+        ...n, _x: cx - NODE_W / 2, _y: startY + i * (NODE_H + V_GAP),
       } as LayoutNode))
     }
 
     const placed = cols.flatMap(c => placeCol(c.nodes, c.cx))
 
-    // Competitors: horizontal row centred below focal
     const C_GAP      = 12
     const compTotalW = comp.length * NODE_W + Math.max(0, comp.length - 1) * C_GAP
     const compStartX = focalCX - compTotalW / 2
     const compY      = PAD + mainH + COMP_SEP
     const compNodes: LayoutNode[] = comp.map((n, i) => ({
-      ...n,
-      _x: compStartX + i * (NODE_W + C_GAP),
-      _y: compY,
+      ...n, _x: compStartX + i * (NODE_W + C_GAP), _y: compY,
     } as LayoutNode))
 
     const allNodes = [...placed, ...compNodes]
-
-    // Tight viewBox
     const xs = allNodes.map(n => n._x)
     const ys = allNodes.map(n => n._y)
     const vbX = Math.min(...xs, focalCX - FOCAL_W / 2) - PAD
     const vbY = Math.min(...ys, focalCY - FOCAL_H / 2) - PAD
-    const vbW = Math.max(...xs.map(x => x + NODE_W), focalCX + FOCAL_W / 2, xCursor) + PAD - vbX
-    const vbH = Math.max(...ys.map(y => y + NODE_H), focalCY + FOCAL_H / 2, compY + NODE_H) + PAD + 20 - vbY
+    const vbW = Math.max(...xs.map(v => v + NODE_W), focalCX + FOCAL_W / 2, x) + PAD - vbX
+    const vbH = Math.max(...ys.map(v => v + NODE_H), focalCY + FOCAL_H / 2, compY + NODE_H) + PAD + 20 - vbY
 
-    return { placed, compNodes, focalCX, focalCY, vbX, vbY, vbW, vbH, cols, compY, mainH }
+    return { placed, compNodes, focalCX, focalCY, vbX, vbY, vbW, vbH, cols, compY }
   }, [edges])
 
   const { placed, compNodes, focalCX, focalCY, vbX, vbY, vbW, vbH, cols, compY } = layout
@@ -212,18 +217,19 @@ export function SCGraph({ ticker, legalName, edges, onNodeClick }: SCGraphProps)
               letterSpacing={2} fontFamily="monospace">COMPETITORS</text>
           )}
 
-          {/* ── Edges (straight, focal centre → node centre) ── */}
+          {/* ── Edges ── */}
           {allNodes.map(e => {
-            const style = DIR[e.direction as keyof typeof DIR] ?? DIR.COMPETITOR
+            const style = DIR[e.direction] ?? DIR.COMPETITOR
             const isHov = hovered === e.id
             const exp   = e.pct_revenue ?? e.pct_cogs ?? 0
-            const sw    = isHov ? 1.4 : Math.max(0.5, Math.min(2.0, (exp / 20) * 1.5 + 0.5))
-            const nx    = e._x + NODE_W / 2, ny = e._y + NODE_H / 2
+            const sw    = isHov ? 1.4 : Math.max(0.4, Math.min(1.8, (exp / 20) * 1.5 + 0.4))
+            const nx = e._x + NODE_W / 2, ny = e._y + NODE_H / 2
             return (
               <line key={`e-${e.id}`}
                 x1={focalCX} y1={focalCY} x2={nx} y2={ny}
                 stroke={style.edge} strokeWidth={sw}
-                strokeOpacity={isHov ? 0.75 : 0.2}
+                strokeOpacity={isHov ? 0.75 : 0.18}
+                strokeDasharray={e.direction === 'SHAREHOLDER' || e.direction === 'BOARD' ? '4 3' : undefined}
                 markerEnd={
                   e.direction === 'UPSTREAM'   ? 'url(#sc-arr-UPSTREAM)'   :
                   e.direction === 'DOWNSTREAM' ? 'url(#sc-arr-DOWNSTREAM)' : undefined
@@ -254,14 +260,23 @@ export function SCGraph({ ticker, legalName, edges, onNodeClick }: SCGraphProps)
 
           {/* ── Entity nodes ── */}
           {allNodes.map(e => {
-            const style  = DIR[e.direction as keyof typeof DIR] ?? DIR.COMPETITOR
+            const style  = DIR[e.direction] ?? DIR.COMPETITOR
             const risk   = riskOf(e)
             const isHov  = hovered === e.id
+            const isSH   = e.direction === 'SHAREHOLDER'
+            const isBD   = e.direction === 'BOARD'
             const exp    = e.pct_revenue ?? e.pct_cogs ?? 0
-            const expStr = exp > 0 ? `${exp.toFixed(1)}%` : ''
+            // Right-side metric: ownership % for shareholders, nothing for board
+            const expStr = isBD ? '' : exp > 0 ? `${exp.toFixed(1)}%` : ''
             const maxCh  = Math.floor((NODE_W - (expStr ? 44 : 18)) / 6.3)
             const name   = e.entity_name.length > maxCh
               ? e.entity_name.slice(0, maxCh - 1) + '…' : e.entity_name
+            // Sub-label: title for board, type badge for shareholders, country/tier otherwise
+            const subLabel = isBD
+              ? (e.relationship_type || '').replace(/_/g, ' ')
+              : isSH
+                ? (e.relationship_type === 'MUTUAL_FUND' ? 'MF' : e.relationship_type === 'INSTITUTION' ? 'INST' : '')
+                : [e.hq_country, e.tier === 2 ? 'T2' : ''].filter(Boolean).join(' · ')
 
             return (
               <g key={`n-${e.id}`} data-node="1" style={{ cursor: 'pointer' }}
@@ -273,21 +288,26 @@ export function SCGraph({ ticker, legalName, edges, onNodeClick }: SCGraphProps)
                   fill={isHov ? style.bg + 'dd' : style.bg}
                   stroke={isHov ? style.border : style.border + '60'}
                   strokeWidth={isHov ? 1 : 0.6}/>
+                {/* Left accent bar — risk colour for SC nodes, direction colour for meta nodes */}
                 <rect x={e._x} y={e._y} width={2.5} height={NODE_H} rx={1.5}
-                  fill={RISK_COLOR[risk]} fillOpacity={0.9}/>
-                <text x={e._x + 9} y={e._y + NODE_H * 0.52}
+                  fill={isSH || isBD ? style.border : RISK_COLOR[risk]} fillOpacity={0.9}/>
+                {/* Name */}
+                <text x={e._x + 9} y={e._y + NODE_H * 0.42}
                   dominantBaseline="middle" fontSize={7.5}
                   fill={isHov ? style.text : style.text + 'bb'}
                   fontFamily="monospace" fontWeight="500">{name}</text>
+                {/* Right metric */}
                 {expStr && (
-                  <text x={e._x + NODE_W - 5} y={e._y + NODE_H * 0.52}
+                  <text x={e._x + NODE_W - 5} y={e._y + NODE_H * 0.42}
                     dominantBaseline="middle" fontSize={7} textAnchor="end"
-                    fill={style.border + 'aa'} fontFamily="monospace">{expStr}</text>
+                    fill={style.border + 'cc'} fontFamily="monospace">{expStr}</text>
                 )}
-                {(e.hq_country || e.tier === 2) && (
-                  <text x={e._x + 9} y={e._y + NODE_H - 5}
-                    fontSize={6} fill="#3a4a5a" fontFamily="monospace">
-                    {[e.hq_country, e.tier === 2 ? 'T2' : ''].filter(Boolean).join(' · ')}
+                {/* Sub-label */}
+                {subLabel && (
+                  <text x={e._x + 9} y={e._y + NODE_H - 6}
+                    fontSize={6} fill={isSH || isBD ? style.border + '80' : '#3a4a5a'}
+                    fontFamily="monospace">
+                    {subLabel.length > 22 ? subLabel.slice(0, 21) + '…' : subLabel}
                   </text>
                 )}
               </g>

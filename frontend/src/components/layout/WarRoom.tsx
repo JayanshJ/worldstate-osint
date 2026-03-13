@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Building2, GitBranch, Globe, LayoutDashboard, Zap } from 'lucide-react'
+import { GitBranch, Globe, LayoutDashboard, Zap } from 'lucide-react'
 import { Header } from './Header'
 import { StatsBar } from './StatsBar'
 import { Ticker } from '@/components/ticker/Ticker'
@@ -12,11 +12,10 @@ import { AlertPanel } from '@/components/alerts/AlertPanel'
 import { WorldMapView } from '@/components/map/WorldMapView'
 import { StrategyFeed } from '@/components/strategies/StrategyFeed'
 import { SupplyChainView } from '@/components/supply-chain/SupplyChainView'
-import { CompanyProfileView } from '@/components/company/CompanyProfileView'
 import { useAlerts } from '@/hooks/useAlerts'
 import { cn } from '@/lib/utils'
 
-type ViewMode = 'dashboard' | 'map' | 'alpha' | 'splc' | 'corp'
+type ViewMode = 'dashboard' | 'map' | 'alpha' | 'splc'
 
 /**
  * WarRoom — full Bloomberg-style layout:
@@ -85,7 +84,6 @@ export function WarRoom() {
             { mode: 'map'       as ViewMode, icon: Globe,            label: 'MAP'   },
             { mode: 'alpha'     as ViewMode, icon: Zap,              label: 'ALPHA' },
             { mode: 'splc'      as ViewMode, icon: GitBranch,        label: 'SPLC'  },
-            { mode: 'corp'      as ViewMode, icon: Building2,        label: 'CORP'  },
           ] as const).map(({ mode, icon: Icon, label }) => (
             <button
               key={mode}
@@ -156,18 +154,7 @@ export function WarRoom() {
             >
               <SupplyChainView />
             </motion.div>
-          ) : (
-            <motion.div
-              key="corp"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              className="flex-1 min-w-0 overflow-hidden"
-            >
-              <CompanyProfileView />
-            </motion.div>
-          )}
+          ) : null}
         </AnimatePresence>
       </div>
 
