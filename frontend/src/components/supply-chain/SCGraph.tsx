@@ -68,18 +68,40 @@ const R_COMP_BASE = 195
 // Max arc span per sector
 const MAX_SPAN_UP   = 130 * DEG
 const MAX_SPAN_DOWN = 120 * DEG
-const MAX_SPAN_COMP = 110 * DEG
+const MAX_SPAN_COMP = 150 * DEG   // wider — competitors fan horizontally so need more room
+
+/**
+ * Minimum centre-to-centre distance along an arc at sector angle `mid`
+ * so that adjacent axis-aligned NODE_W×NODE_H rectangles don't overlap.
+ *
+ * The arc direction at angle `mid` is perpendicular to the radius:
+ *   tangent = (−sin mid, cos mid)
+ * So the "width" a node occupies along that tangent is:
+ *   |sin mid| × NODE_W  +  |cos mid| × NODE_H
+ */
+function nodeGap(mid: number): number {
+  return Math.abs(Math.sin(mid)) * NODE_W + Math.abs(Math.cos(mid)) * NODE_H + 10
+}
+
+/**
+ * Minimum radius so that `count` nodes evenly spread over `maxSpan` radians
+ * at sector centre `mid` are non-overlapping.
+ */
+function minRadiusForSector(count: number, mid: number, maxSpan: number): number {
+  if (count <= 1) return 0
+  return (count - 1) * nodeGap(mid) / maxSpan
+}
 
 /**
  * Evenly distribute `count` nodes across an arc centred at `mid`.
- * The span auto-expands so consecutive nodes are at least `minGap` apart (arc-distance).
+ * Span auto-expands so consecutive nodes never overlap (angle-aware).
  */
 function arcAngles(count: number, mid: number, baseSpan: number, maxSpan: number, radius: number): number[] {
   if (count === 0) return []
   if (count === 1) return [mid]
-  const minGap    = NODE_H + 4          // pixels between node centres along arc
-  const needed    = (count - 1) * (minGap / radius)   // radians needed
-  const span      = Math.min(maxSpan, Math.max(baseSpan, needed))
+  const gap    = nodeGap(mid)
+  const needed = (count - 1) * (gap / radius)
+  const span   = Math.min(maxSpan, Math.max(baseSpan, needed))
   return Array.from({ length: count }, (_, i) =>
     mid - span / 2 + (i / (count - 1)) * span
   )
@@ -154,11 +176,11 @@ export function SCGraph({ ticker, legalName, edges, onNodeClick }: SCGraphProps)
     const down = edges.filter(e => e.direction === 'DOWNSTREAM')
     const comp = edges.filter(e => e.direction === 'COMPETITOR')
 
-    // Scale radius up if column is dense so nodes don't overlap
-    const t1R   = Math.max(R_T1_BASE,   upT1.length * 22)
-    const t2R   = Math.max(R_T2_BASE,   upT2.length * 22)
-    const downR = Math.max(R_DOWN_BASE, down.length * 22)
-    const compR = Math.max(R_COMP_BASE, comp.length * 24)
+    // Scale radius so nodes never overlap (angle-aware minimum)
+    const t1R   = Math.max(R_T1_BASE,   minRadiusForSector(upT1.length, UP_MID,   MAX_SPAN_UP))
+    const t2R   = Math.max(R_T2_BASE,   minRadiusForSector(upT2.length, UP_MID,   MAX_SPAN_UP))
+    const downR = Math.max(R_DOWN_BASE, minRadiusForSector(down.length,  DOWN_MID, MAX_SPAN_DOWN))
+    const compR = Math.max(R_COMP_BASE, minRadiusForSector(comp.length,  COMP_MID, MAX_SPAN_COMP))
 
     // Canvas — set focal centre, then compute tight bounding viewBox
     const CX = Math.max(t2R, t1R) + HW + 32
