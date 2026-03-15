@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useLocation, useRoute } from 'wouter'
 import { AnimatePresence, motion } from 'framer-motion'
 import { GitBranch, Globe, LayoutDashboard, Zap } from 'lucide-react'
 import { Header } from './Header'
@@ -17,35 +18,43 @@ import { cn } from '@/lib/utils'
 
 type ViewMode = 'dashboard' | 'map' | 'alpha' | 'splc'
 
-/**
- * WarRoom — full Bloomberg-style layout:
- *
- * ┌──────────────────────────────────────────────────────────┐
- * │  HEADER  (brand, UTC clock, search, alerts, WS status)   │
- * ├──────────────────────────────────────────────────────────┤
- * │  STATS BAR  (articles/min, cluster tiers, source health) │
- * ├──────────────────────┬───────────────────────────────────┤
- * │                      │                                    │
- * │  CLUSTER FEED (65%)  │  LIVE RAW FEED (35%)               │
- * │                      │                                    │
- * ├──────────────────────┴───────────────────────────────────┤
- * │  TICKER  (scrolling headlines)                            │
- * └──────────────────────────────────────────────────────────┘
- *
- * Overlays (portal-rendered):
- *   SearchPanel         — Cmd+K / Search button
- *   ClusterDetailModal  — click EventCard or search result
- *   AlertPanel          — Alerts button
- */
+const VIEW_PATHS: Record<ViewMode, string> = {
+  dashboard: '/',
+  map:       '/map',
+  alpha:     '/alpha',
+  splc:      '/splc',
+}
+
+function pathToView(path: string): ViewMode {
+  if (path.startsWith('/map'))   return 'map'
+  if (path.startsWith('/alpha')) return 'alpha'
+  if (path.startsWith('/splc'))  return 'splc'
+  return 'dashboard'
+}
+
 export function WarRoom() {
+  const [location, navigate]  = useLocation()
+  const [, clusterParams]     = useRoute('/cluster/:id')
+  const [, splcParams]        = useRoute('/splc/:ticker')
+
   const [searchOpen,      setSearchOpen]      = useState(false)
   const [alertsOpen,      setAlertsOpen]      = useState(false)
-  const [detailClusterId, setDetailClusterId] = useState<string | null>(null)
-  const [viewMode,        setViewMode]        = useState<ViewMode>('dashboard')
+  const [detailClusterId, setDetailClusterId] = useState<string | null>(
+    clusterParams?.id ?? null,
+  )
 
   const { unreadCount } = useAlerts()
 
-  // Cmd/Ctrl+K → open search
+  const viewMode = pathToView(location)
+
+  // Restore cluster modal from /cluster/:id route on first load
+  useEffect(() => {
+    if (clusterParams?.id) {
+      setDetailClusterId(clusterParams.id)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cmd/Ctrl+K → search
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -57,11 +66,30 @@ export function WarRoom() {
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
+  const setViewMode = useCallback((mode: ViewMode) => {
+    navigate(VIEW_PATHS[mode])
+  }, [navigate])
+
   const openCluster = useCallback((id: string) => {
     setDetailClusterId(id)
     setSearchOpen(false)
     setAlertsOpen(false)
-  }, [])
+    navigate(`/cluster/${id}`)
+  }, [navigate])
+
+  const closeCluster = useCallback(() => {
+    setDetailClusterId(null)
+    // Go back to the view they came from (or dashboard)
+    const prev = pathToView(location)
+    navigate(prev === 'dashboard' ? '/' : VIEW_PATHS[prev])
+  }, [location, navigate])
+
+  // Current SPLC ticker from URL (e.g. /splc/AAPL)
+  const splcTicker = splcParams?.ticker?.toUpperCase() ?? undefined
+
+  const handleSplcTickerChange = useCallback((ticker: string | null) => {
+    navigate(ticker ? `/splc/${ticker.toUpperCase()}` : '/splc')
+  }, [navigate])
 
   return (
     <div className="flex flex-col h-screen w-screen bg-terminal-bg overflow-hidden">
@@ -77,7 +105,6 @@ export function WarRoom() {
         <div className="flex-1">
           <StatsBar />
         </div>
-        {/* View toggle */}
         <div className="flex items-center gap-1 px-3 border-l border-terminal-border bg-terminal-surface">
           {([
             { mode: 'dashboard' as ViewMode, icon: LayoutDashboard, label: 'FEED'  },
@@ -152,7 +179,10 @@ export function WarRoom() {
               transition={{ duration: 0.15 }}
               className="flex-1 min-w-0 overflow-hidden"
             >
-              <SupplyChainView />
+              <SupplyChainView
+                initialTicker={splcTicker}
+                onTickerChange={handleSplcTickerChange}
+              />
             </motion.div>
           ) : null}
         </AnimatePresence>
@@ -187,7 +217,7 @@ export function WarRoom() {
           <ClusterDetailModal
             key={detailClusterId}
             clusterId={detailClusterId}
-            onClose={() => setDetailClusterId(null)}
+            onClose={closeCluster}
           />
         )}
       </AnimatePresence>

@@ -25,6 +25,7 @@ const CATEGORY_COLORS: Record<ClusterCategory, string> = {
   GEOPOLITICS: '#f97316',
   POLITICS:    '#a855f7',
   FINANCE:     '#22c55e',
+  CRYPTO:      '#f59e0b',
   BUSINESS:    '#84cc16',
   TECHNOLOGY:  '#3b82f6',
   CRIME:       '#ec4899',
@@ -43,9 +44,13 @@ export function ClusterFeed({ onClusterSelect }: Props) {
   const tabsRef                     = useRef<HTMLDivElement>(null)
 
   const byVolatility = clusters.filter(c => c.volatility >= minVolt)
-  const filtered = category === 'ALL'
+  const inCategory = category === 'ALL'
     ? byVolatility
     : byVolatility.filter(c => categorizeCluster(c) === category)
+  // ALL: keep recency order; category tabs: sort by importance (volatility × score)
+  const filtered = category === 'ALL'
+    ? inCategory
+    : [...inCategory].sort((a, b) => (b.volatility * b.weighted_score) - (a.volatility * a.weighted_score))
 
   const breakingCount = clusters.filter(c => c.volatility >= 0.7).length
 

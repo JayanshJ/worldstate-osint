@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import alerts, clusters, company, feed, metals, search, stats, strategies, websocket
+from app.api.routes import alerts, clusters, company, feed, metals, search, stats, strategies, websocket, research
 from app.api.routes import supply_chain
 from app.api.routes.metals import start_metals_background
 from app.core.config import get_settings
@@ -56,6 +56,7 @@ app.include_router(stats.router,      prefix="/api/v1/stats",      tags=["stats"
 app.include_router(strategies.router,     prefix="/api/v1/strategies", tags=["strategies"])
 app.include_router(supply_chain.router,   prefix="/api/v1/splc",       tags=["supply-chain"])
 app.include_router(company.router,        prefix="/api/v1/company",    tags=["company"])
+app.include_router(research.router,       prefix="/api/v1/research",   tags=["research"])
 app.include_router(websocket.router,                                    tags=["websocket"])
 
 

@@ -127,7 +127,14 @@ OUTPUT FORMAT — return exactly this JSON structure:
   ]
 }
 
-Generate 5 to 10 strategies. Cover multiple asset classes when evidence supports it.
+Generate 8 to 12 strategies. You MUST cover ALL of the following asset classes — generate at least one per class:
+  • FOREX: DXY/USD direction, at least one major pair (EUR/USD, GBP/USD, USD/JPY), and one EM currency play. Any conflict, sanctions, or macro event drives currency flows.
+  • CRYPTO: BTC and ETH directional view. Geopolitical risk drives capital flight to BTC. Sanctions/USD strength pressures or pumps BTC. Always derive a crypto view.
+  • BONDS: US Treasury direction (TLT long / SHY short). Any inflation, recession, or rate expectation story has a bond angle. Credit spread outlook (HYG/LQD).
+  • COMMODITY: Oil (Brent/WTI), Gold, or agricultural commodity (Wheat/Corn).
+  • EQUITY: At least one sector ETF (XLE, IHI, XLF) or country ETF play.
+  • VOLATILITY: VIX outlook, MOVE index, or specific options strategy.
+
 Prioritize highest-volatility, highest-conviction opportunities first.
 Identify cross-cluster thematic connections — the best strategies span multiple clusters."""
 
@@ -243,18 +250,19 @@ async def generate_strategies(db: AsyncSession) -> list[MarketStrategy]:
     Core entry point. Fetches top clusters, calls AI, persists strategies,
     and broadcasts via Redis. Returns list of newly created strategies.
     """
-    # Fetch top 20 active, summarised clusters ranked by volatility × credibility
+    # Fetch top 25 active, summarised clusters ranked by volatility × credibility
+    # Low threshold (0.05) ensures tech/crypto/finance clusters are not excluded
     result = await db.execute(
         select(EventCluster)
         .where(
             EventCluster.is_active == True,
             EventCluster.label != None,
-            EventCluster.volatility >= 0.2,
+            EventCluster.volatility >= 0.05,
         )
         .order_by(
             (EventCluster.volatility * EventCluster.weighted_score).desc()
         )
-        .limit(20)
+        .limit(25)
     )
     clusters = result.scalars().all()
 

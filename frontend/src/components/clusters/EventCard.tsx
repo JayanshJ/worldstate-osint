@@ -6,7 +6,6 @@ import {
   getVolatilityTier,
   VOLATILITY_BG,
   VOLATILITY_COLORS,
-  formatSentiment,
 } from '@/types'
 import { cn, formatSentiment as fmtSent, timeAgo, formatTime } from '@/lib/utils'
 import { VolatilityBadge } from '@/components/ui/VolatilityBadge'

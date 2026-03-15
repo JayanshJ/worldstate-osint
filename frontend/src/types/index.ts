@@ -209,6 +209,7 @@ export type ClusterCategory =
   | 'GEOPOLITICS'
   | 'POLITICS'
   | 'FINANCE'
+  | 'CRYPTO'
   | 'BUSINESS'
   | 'TECHNOLOGY'
   | 'CRIME'
@@ -221,6 +222,7 @@ export const CATEGORY_LABELS: Record<ClusterCategory, string> = {
   GEOPOLITICS: 'Geopolitics',
   POLITICS:    'Politics',
   FINANCE:     'Finance',
+  CRYPTO:      'Crypto',
   BUSINESS:    'Business',
   TECHNOLOGY:  'Technology',
   CRIME:       'Crime',
@@ -229,51 +231,107 @@ export const CATEGORY_LABELS: Record<ClusterCategory, string> = {
 }
 
 const CATEGORY_KEYWORDS: [ClusterCategory, string[]][] = [
-  ['CONFLICT',    ['missile', 'airstrike', 'bombing', 'bombed', 'troops', 'military', 'ceasefire',
-                   'invasion', 'war ', 'warhead', 'casualties', 'killed', 'combat', 'drone strike',
-                   'nuclear', 'weapon', 'armed conflict', 'offensive', 'battalion',
-                   'explosion', 'blast', 'gunfire', 'hostage', 'siege', 'frontline']],
-  ['FINANCE',     ['stock', 'shares', 'bond', 'interest rate', 'inflation', 'gdp', 'trade deficit',
-                   'currency', 'dollar', 'euro', 'yen', 'forex', 'crypto', 'bitcoin', 'ethereum',
-                   'ipo', 'earnings', 'dividend', 'hedge fund', 'market crash', 'recession',
-                   'central bank', 'federal reserve', 'imf', 'world bank', 'debt', 'fiscal',
-                   'tariff', 'oil price', 'commodity', 'nasdaq', 'wall street']],
+  // ── Checked first: high-specificity hard signals ──
+  ['CONFLICT',    ['missile', 'airstrike', 'bombing', 'bombed', 'troops', 'military offensive',
+                   'invasion', 'warhead', 'casualties', 'killed in', 'combat', 'drone strike',
+                   'nuclear weapon', 'armed conflict', 'battalion', 'frontline',
+                   'explosion', 'blast', 'gunfire', 'hostage', 'siege', 'war crime',
+                   'shelling', 'rocket attack', 'ground forces', 'ceasefire']],
+
+  ['TECHNOLOGY',  [
+                   // Company names
+                   'apple', 'google', 'alphabet', 'meta ', 'nvidia', 'microsoft', 'amazon',
+                   'tesla', 'samsung', 'intel', 'amd', 'qualcomm', 'tsmc', 'openai',
+                   'anthropic', 'deepmind', 'spacex', 'palantir', 'snowflake', 'salesforce',
+                   'oracle', 'ibm', 'cisco', 'netflix', 'spotify', 'uber', 'airbnb',
+                   // Topics
+                   'artificial intelligence', ' ai ', 'machine learning', 'deep learning',
+                   'large language model', 'llm', 'chatgpt', 'generative ai',
+                   'cybersecurity', 'hacker', 'data breach', 'ransomware', 'malware',
+                   'semiconductor', 'chip', 'silicon valley', 'cloud computing',
+                   'automation', 'satellite launch', 'space launch', 'spacecraft',
+                   'software', 'hardware', 'startup', 'tech company', 'venture capital',
+                   'app store', 'smartphone', 'iphone', 'android', 'quantum computing',
+                   'blockchain', 'cryptocurrency exchange', 'nft', 'robotics',
+                   'autonomous vehicle', 'electric vehicle battery', 'fintech',
+                   'data center', 'algorithm', 'open source', 'developer',
+                   'tech layoff', 'tech giant', 'big tech', 'silicon']],
+
+  ['BUSINESS',    ['merger', 'acquisition', 'takeover', 'buyout', 'ipo ', 'initial public offering',
+                   'ceo ', 'chief executive', 'quarterly earnings', 'quarterly results',
+                   'revenue growth', 'profit margin', 'supply chain', 'layoff', 'redundan',
+                   'bankrupt', 'chapter 11', 'private equity', 'venture fund',
+                   'valuation', 'unicorn', 'spinoff', 'joint venture', 'deal closed',
+                   'shareholders', 'board of directors', 'activist investor',
+                   'antitrust', 'monopoly', 'ftc', 'sec charges', 'market share']],
+
+  ['CRYPTO',      [
+                   // Coins & tokens
+                   'bitcoin', 'btc ', ' btc', 'ethereum', ' eth ', 'solana', ' sol ',
+                   'binance', 'bnb', 'xrp', 'cardano', 'avalanche', 'polkadot', 'dogecoin',
+                   'shiba inu', 'litecoin', 'chainlink', 'uniswap', 'aave', 'compound',
+                   'stablecoin', 'usdt', 'usdc', 'tether', 'dai',
+                   // Topics
+                   'crypto', 'cryptocurrency', 'blockchain', 'defi', 'decentralized finance',
+                   'web3', 'nft', 'token', 'altcoin', 'memecoin', 'satoshi',
+                   'mining rig', 'proof of stake', 'proof of work', 'smart contract',
+                   'wallet hack', 'exchange hack', 'rug pull', 'protocol exploit',
+                   'coinbase', 'binance exchange', 'kraken', 'ftx', 'bybit',
+                   'crypto regulation', 'sec crypto', 'etf bitcoin', 'spot etf',
+                   'crypto market', 'bull run', 'bear market crypto',
+                   'layer 2', 'layer2', 'rollup', 'lightning network',
+                   'vitalik', 'satoshi nakamoto', 'hal finney']],
+
+  ['FINANCE',     ['stock market', 'stock price', 'shares fell', 'shares rose', 'bond yield',
+                   'interest rate', 'inflation rate', 'gdp growth', 'trade deficit',
+                   'forex', 'currency devaluation', 'dollar index',
+                   'dividend', 'hedge fund', 'market crash', 'recession',
+                   'federal reserve', 'central bank', 'imf', 'world bank', 'debt ceiling',
+                   'fiscal policy', 'tariff', 'oil price', 'crude oil', 'commodity prices',
+                   'nasdaq', 's&p 500', 'wall street', 'dow jones', 'treasury',
+                   'rate hike', 'rate cut', 'quantitative easing', 'bank run']],
+
   ['GEOPOLITICS', ['sanction', 'diplomatic', 'embassy', 'nato', 'united nations', 'treaty',
-                   'alliance', 'summit', 'bilateral', 'geopolit', 'g7', 'g20', 'brics',
+                   'alliance', 'bilateral summit', 'geopolit', 'g7', 'g20', 'brics',
                    'security council', 'sovereignty', 'foreign minister', 'state department',
-                   'ambassador', 'expel', 'envoy', 'negotiation', 'peace talks']],
-  ['POLITICS',    ['election', 'president', 'parliament', 'minister', 'senate', 'congress',
-                   'legislation', 'vote', 'referendum', 'prime minister', 'chancellor',
-                   'democrat', 'republican', 'political party', 'campaign', 'inauguration',
-                   'impeach', 'cabinet', 'administration', 'white house', 'kremlin']],
-  ['TECHNOLOGY',  ['artificial intelligence', 'cybersecurity', 'hacker', 'data breach',
-                   'semiconductor', 'silicon valley', 'cloud computing', 'automation',
-                   'satellite', 'space launch', 'openai', 'microsoft', 'amazon web']],
-  ['BUSINESS',    ['company', 'corporation', 'merger', 'acquisition', 'ceo', 'quarterly', 'revenue',
-                   'profit', 'supply chain', 'layoff', 'bankrupt', 'investor', 'valuation']],
-  ['HEALTH',      ['pandemic', 'virus', 'disease', 'hospital', 'vaccine', 'outbreak', 'epidemic',
-                   'world health', 'treatment', 'pharmaceutical', 'cancer',
-                   'pathogen', 'mortality', 'public health', 'clinical trial']],
-  ['CRIME',       ['arrested', 'murder', 'convict', 'sentenced', 'trafficking', 'fraud',
-                   'corruption', 'indicted', 'prison', 'cartel', 'gang', 'smuggling',
-                   'terrorism', 'terrorist', 'extremist', 'assassination', 'kidnap']],
-  ['CLIMATE',     ['climate', 'environment', 'emission', 'carbon', 'pollution', 'wildfire',
-                   'flood', 'drought', 'renewable', 'solar', 'deforestation',
-                   'glacier', 'sea level', 'paris agreement', 'methane']],
+                   'ambassador', 'expel', 'envoy', 'peace talks', 'trade war',
+                   'nuclear deal', 'arms deal', 'foreign policy']],
+
+  ['POLITICS',    ['election', 'president ', 'parliament', 'prime minister', 'senate',
+                   'congress', 'legislation', 'referendum', 'chancellor',
+                   'democrat', 'republican', 'political party', 'campaign trail',
+                   'inauguration', 'impeach', 'cabinet reshuffle', 'administration',
+                   'white house', 'kremlin', 'downing street', 'polling', 'ballot']],
+
+  ['HEALTH',      ['pandemic', 'virus', 'disease outbreak', 'hospital', 'vaccine',
+                   'epidemic', 'world health organization', 'treatment', 'pharmaceutical',
+                   'cancer', 'pathogen', 'mortality rate', 'public health', 'clinical trial',
+                   'drug approval', 'fda', 'who ', 'infection', 'mental health']],
+
+  ['CRIME',       ['arrested', 'murder', 'convict', 'sentenced', 'trafficking',
+                   'fraud', 'corruption', 'indicted', 'prison', 'cartel', 'gang',
+                   'smuggling', 'terrorism', 'terrorist attack', 'extremist',
+                   'assassination', 'kidnap', 'cybercrime', 'money laundering']],
+
+  ['CLIMATE',     ['climate change', 'environment', 'emission', 'carbon neutral',
+                   'pollution', 'wildfire', 'flood', 'drought', 'renewable energy',
+                   'solar power', 'deforestation', 'glacier', 'sea level',
+                   'paris agreement', 'methane', 'net zero', 'fossil fuel', 'green energy']],
 ]
 
 export function categorizeCluster(cluster: EventCluster): ClusterCategory {
   const text = [
     cluster.label ?? '',
     ...(cluster.bullets ?? []),
-    ...(cluster.entities?.locations ?? []),
     ...(cluster.entities?.organizations ?? []),
+    ...(cluster.entities?.people ?? []),
   ].join(' ').toLowerCase()
 
   for (const [cat, keywords] of CATEGORY_KEYWORDS) {
     if (keywords.some(kw => text.includes(kw))) return cat
   }
-  return 'POLITICS'
+  // Default: GEOPOLITICS is a safer fallback than POLITICS for unlabelled world news
+  return 'GEOPOLITICS'
 }
 
 // ─── Source metadata ──────────────────────────────────────────────────────
@@ -311,22 +369,126 @@ export const SOURCE_LABELS: Record<string, string> = {
   // Latin America
   mercopress:       'MERCOPRESS',
   rio_times:        'RIO TIMES',
-  // Finance
+  // Finance / Business / Markets
   ft_world:         'FT',
+  ft_markets:       'FT',
   wsj_world:        'WSJ',
+  wsj_markets:      'WSJ',
+  wsj_business:     'WSJ',
   bloomberg_intl:   'BBG',
-  // Reddit
-  reddit_worldnews:  'REDDIT',
-  reddit_breaking:   'REDDIT',
-  reddit_geopolit:   'REDDIT',
-  reddit_iran:       'REDDIT',
-  reddit_middleeast: 'REDDIT',
-  reddit_ukrnews:    'REDDIT',
-  reddit_europe:     'REDDIT',
-  reddit_china:      'REDDIT',
-  reddit_india:      'REDDIT',
-  reddit_latam:      'REDDIT',
-  reddit_africa:     'REDDIT',
+  bloomberg_tech:   'BBG TECH',
+  bloomberg_biz:    'BBG BIZ',
+  reuters_biz:      'REUTERS',
+  reuters_tech:     'REUTERS',
+  reuters_mkts:     'REUTERS',
+  cnbc_top:         'CNBC',
+  cnbc_finance:     'CNBC',
+  cnbc_tech:        'CNBC TECH',
+  marketwatch:      'MKT WATCH',
+  seekingalpha:     'SEEK ALPHA',
+  investopedia:     'INVESTOP',
+  fortune:          'FORTUNE',
+  business_insider: 'BI',
+  yahoo_finance:    'YAHOO FIN',
+  economist:        'ECONOMIST',
+  // Technology
+  techcrunch:       'TECHCRUNCH',
+  theverge:         'THE VERGE',
+  arstechnica:      'ARS TECH',
+  wired:            'WIRED',
+  hackernews:       'HN',
+  mit_tech:         'MIT TECH',
+  venturebeat:      'VBEAT',
+  zdnet:            'ZDNET',
+  infoq:            'INFOQ',
+  // Reddit — geo/world
+  reddit_worldnews:   'r/worldnews',
+  reddit_breaking:    'r/breakingnews',
+  reddit_geopolit:    'r/geopolitics',
+  reddit_iran:        'r/iran',
+  reddit_middleeast:  'r/MiddleEast',
+  reddit_ukrnews:     'r/ukraine',
+  reddit_europe:      'r/europe',
+  reddit_china:       'r/China',
+  reddit_india:       'r/india',
+  reddit_latam:       'r/LatinAmerica',
+  reddit_africa:      'r/Africa',
+  // Reddit — finance / investing
+  reddit_investing:   'r/investing',
+  reddit_stocks:      'r/stocks',
+  reddit_finance:     'r/finance',
+  reddit_economics:   'r/economics',
+  reddit_wsb:         'r/wsb',
+  reddit_secanalysis: 'r/SecAnalysis',
+  reddit_valueinvest: 'r/ValueInvest',
+  reddit_personalfin: 'r/personalfin',
+  // Reddit — technology
+  reddit_technology:  'r/technology',
+  reddit_tech:        'r/tech',
+  reddit_programming: 'r/programming',
+  reddit_ai:          'r/artificial',
+  reddit_machlearn:   'r/ML',
+  reddit_cybersec:    'r/cybersecurity',
+  reddit_netsec:      'r/netsec',
+  // Reddit — business
+  reddit_business:    'r/business',
+  reddit_entrepreneur:'r/Entrepreneur',
+  reddit_startups:    'r/startups',
+  // Reddit — crypto
+  reddit_bitcoin:     'r/Bitcoin',
+  reddit_ethereum:    'r/ethereum',
+  reddit_crypto:      'r/CryptoCurrency',
+  reddit_defi:        'r/defi',
+  reddit_cryptomkts:  'r/CryptoMarkets',
+  reddit_solana:      'r/solana',
+  reddit_web3:        'r/web3',
+  // Crypto RSS
+  coindesk:           'COINDESK',
+  cointelegraph:      'CT',
+  decrypt:            'DECRYPT',
+  theblock:           'THE BLOCK',
+  blockworks:         'BLOCKWORKS',
+  bitcoinmagazine:    'BTC MAG',
+  cryptoslate:        'CSLATE',
+  cryptonews:         'CNEWS',
+  dlnews:             'DL NEWS',
+  // Twitter/X — wire & finance
+  tw_wsj:             'WSJ',
+  tw_ft:              'FT',
+  tw_bloomberg:       'BBG',
+  tw_cnbc:            'CNBC',
+  tw_reuters_biz:     'REUTERS',
+  tw_zerohedge:       'ZH',
+  tw_raoul_pal:       'RAOUL PAL',
+  tw_elerianm:        'EL-ERIAN',
+  tw_nfergus:         'N.FERGUSON',
+  tw_abnormalret:     'ABNRML RET',
+  tw_jesse_livermore: 'J.LIVERMR',
+  tw_markets_live:    'BBG LIVE',
+  tw_lisaabramowicz:  'L.ABRAM',
+  tw_tracyalloway:    'TRACY A.',
+  // Twitter/X — crypto alpha
+  tw_coindesk:        'COINDESK',
+  tw_cointelegraph:   'CT',
+  tw_theblock:        'THE BLOCK',
+  tw_vitalik:         'VITALIK',
+  tw_saylor:          'SAYLOR',
+  tw_cz_binance:      'CZ',
+  tw_aantonop:        'ANTONOP',
+  tw_wuBlockchain:    'WU CHAIN',
+  tw_tier10k:         'TIER10K',
+  tw_pentosh1:        'PENTOSHI',
+  // Twitter/X — tech alpha
+  tw_sama:            'SAM ALTMAN',
+  tw_ylecun:          'YANN LECUN',
+  tw_karpathy:        'KARPATHY',
+  tw_elonmusk:        'ELON',
+  tw_paulg:           'PAUL GRAHAM',
+  tw_benedictevans:   'B.EVANS',
+  tw_stratechery:     'STRATECHERY',
+  tw_avc:             'FRED WILSON',
+  tw_techcrunch:      'TECHCRUNCH',
+  tw_verge:           'THE VERGE',
 }
 
 export function getSourceLabel(sourceId: string): string {

@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     google_api_key: str = ""
     gemini_model: str = "gemini-1.5-flash"
 
+    # ── Finnhub ────────────────────────────────────────────────────────────
+    finnhub_api_key: str = ""
+
     # ── Social Credentials ─────────────────────────────────────────────────
     twitter_bearer_token: str = ""
     reddit_client_id: str = ""

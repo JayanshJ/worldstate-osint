@@ -67,6 +67,17 @@ SENTIMENT SCORING:
    0.0 = Neutral / ambiguous
   +1.0 = Strongly positive (ceasefire, treaty, resolution)"""
 
+DEEP_DIVE_SYSTEM_PROMPT = """You are a senior geopolitical and financial intelligence analyst at a signals intelligence agency.
+Your task is to write a comprehensive, multi-paragraph "Deep Dive" briefing based on the provided raw intelligence sources.
+
+RULES — NEVER VIOLATE:
+1. Write in clear, declarative paragraphs. Do not use bullets.
+2. Provide a detailed synthesis of the event, including background context, immediate impact, and potential future implications.
+3. Explicitly mention key entities, their roles, and any diverging reports among the sources.
+4. If sources conflict, explain the nature of the conflict.
+5. Provide a purely textual assessment (Markdown is allowed for formatting, but no JSON).
+6. Length: 2 to 4 paragraphs. Be highly analytical and objective."""
+
 
 def _build_user_prompt(articles: list[RawArticle]) -> str:
     lines = [
@@ -156,3 +167,45 @@ async def summarize_cluster(articles: list[RawArticle]) -> dict:
     result = await _summarize_with_openai(articles)
     logger.info("Intelligence brief generated via GPT-4o-mini")
     return result
+
+# ─── Deep Dive Generation ──────────────────────────────────────────────────
+
+async def deepdive_cluster_articles(articles: list[RawArticle]) -> str:
+    """
+    Generates a detailed, multi-paragraph textual analysis of the cluster's articles.
+    Attempts Gemini first, falls back to OpenAI.
+    """
+    if not articles:
+        raise ValueError("No articles provided for deep dive")
+    
+    user_prompt = _build_user_prompt(articles)
+
+    if settings.google_api_key:
+        try:
+            genai.configure(api_key=settings.google_api_key)
+            model = genai.GenerativeModel(
+                model_name=settings.gemini_model,
+                system_instruction=DEEP_DIVE_SYSTEM_PROMPT,
+                generation_config=genai.GenerationConfig(
+                    temperature=0.2,
+                    max_output_tokens=2048,
+                ),
+            )
+            response = await model.generate_content_async(user_prompt)
+            logger.info("Deep dive generated via Gemini")
+            return response.text.strip()
+        except Exception as e:
+            logger.warning("Gemini deep dive failed: %s. Falling back to OpenAI.", e)
+
+    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    response = await client.chat.completions.create(
+        model=settings.openai_model,
+        messages=[
+            {"role": "system", "content": DEEP_DIVE_SYSTEM_PROMPT},
+            {"role": "user",   "content": user_prompt},
+        ],
+        temperature=0.2,
+        max_tokens=2048,
+    )
+    logger.info("Deep dive generated via GPT")
+    return response.choices[0].message.content.strip()

@@ -43,6 +43,8 @@ export const api = {
       }),
     get: (id: string) =>
       req<EventCluster & { members: ClusterMemberDetail[] }>(`${BASE}/clusters/${id}`),
+    deepdive: (id: string) =>
+      req<{ analysis: string }>(`${BASE}/clusters/${id}/deepdive`),
   },
 
   feed: {
@@ -57,6 +59,16 @@ export const api = {
   search: {
     query: (q: string, mode: 'keyword' | 'semantic' = 'keyword', limit = 20) =>
       req<SearchResponse>(`${BASE}/search/`, { q, mode, limit }),
+  },
+
+  research: {
+    entity: (name: string, type?: string) =>
+      req<{
+        summary: string
+        key_developments: string[]
+        known_affiliations: string[]
+        risk_indicators: string[]
+      }>(`${BASE}/research/entity`, { name, ...(type ? { type } : {}) }),
   },
 
   alerts: {

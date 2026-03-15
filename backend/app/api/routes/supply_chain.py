@@ -11,13 +11,14 @@ GET  /api/v1/splc/{ticker}/graph   — return data in force-graph node/edge form
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import AsyncSessionLocal
 from app.intelligence.splc_extractor import (
+    enrich_supply_chain_live,
     extract_supply_chain,
     search_companies_by_name,
 )
@@ -116,15 +117,20 @@ async def get_supply_chain(
 @router.post("/{ticker}")
 async def analyse_ticker(
     ticker: str,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
     """
     Trigger EDGAR download + LLM extraction for a ticker.
-    Runs synchronously — expect 15–30 s.  Results cached in PostgreSQL.
+    Supply-chain edges are inserted synchronously (~15-30 s).
+    Shareholder / board / analyst / industry enrichment runs in the background
+    via yfinance (live Yahoo Finance / SEC 13F data) with retry logic.
     """
     ticker = ticker.upper().strip()
     try:
         result = await extract_supply_chain(ticker, db)
+        # Enrich with live yfinance data after returning the response
+        background_tasks.add_task(enrich_supply_chain_live, ticker)
         return {"status": "ok", **result}
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))

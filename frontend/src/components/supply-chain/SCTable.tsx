@@ -26,11 +26,15 @@ const RISK_LABEL = (e: SCEdge) => {
   return              { label: '—',    color: '#5a6380', bg: 'bg-transparent   border-terminal-border' }
 }
 
-const DIR_CONFIG = {
-  UPSTREAM:   { label: '↑ SUPPLIER',   color: '#0ea5e9' },
-  DOWNSTREAM: { label: '↓ CUSTOMER',   color: '#22c55e' },
-  COMPETITOR: { label: '↔ COMPETITOR', color: '#9ca3af' },
-} as const
+const DIR_CONFIG: Record<string, { label: string; color: string }> = {
+  UPSTREAM:    { label: '↑ SUPPLIER',    color: '#0ea5e9' },
+  DOWNSTREAM:  { label: '↓ CUSTOMER',    color: '#22c55e' },
+  COMPETITOR:  { label: '↔ COMPETITOR',  color: '#9ca3af' },
+  SHAREHOLDER: { label: '◆ HOLDER',      color: '#eab308' },
+  BOARD:       { label: '● BOARD',       color: '#e879f9' },
+  ANALYST:     { label: '◈ ANALYST',     color: '#a78bfa' },
+  INDUSTRY:    { label: '▣ INDUSTRY',    color: '#06b6d4' },
+}
 
 const DISC_ICON: Record<string, string> = {
   DISCLOSED: '📄', ESTIMATED: '~', INFERRED: '⚡',
@@ -52,12 +56,20 @@ function MiniBar({ value, max, color }: { value: number; max: number; color: str
   )
 }
 
+// Typed cell-click events for contextual side panel
+export type CellClickEvent =
+  | { type: 'entity';    edge: SCEdge }
+  | { type: 'direction'; direction: string; edges: SCEdge[] }
+  | { type: 'country';   country: string; edges: SCEdge[] }
+  | { type: 'edge';      edge: SCEdge }
+
 interface SCTableProps {
-  edges:      SCEdge[]
-  onRowClick: (e: SCEdge) => void
+  edges:       SCEdge[]
+  onRowClick:  (e: SCEdge) => void
+  onCellClick?: (ev: CellClickEvent) => void
 }
 
-export function SCTable({ edges, onRowClick }: SCTableProps) {
+export function SCTable({ edges, onRowClick, onCellClick }: SCTableProps) {
   const [direction, setDirection] = useState<Direction>('ALL')
   const [sortKey,   setSortKey]   = useState<SortKey>('risk')
   const [sortAsc,   setSortAsc]   = useState(false)
@@ -189,8 +201,14 @@ export function SCTable({ edges, onRowClick }: SCTableProps) {
               const { label, color, bg } = RISK_LABEL(e)
               const exp = e.pct_revenue ?? e.pct_cogs
               const expLabel = e.pct_revenue != null ? 'REV' : e.pct_cogs != null ? 'COG' : null
-              const dirCfg = DIR_CONFIG[e.direction]
+              const dirCfg = DIR_CONFIG[e.direction] ?? { label: e.direction, color: '#5a6380' }
               const conf = (e.confidence ?? 0.75) * 100
+
+              // Cell click helper: stops row-level propagation and emits typed event
+              const cell = (ev: CellClickEvent) => (me: React.MouseEvent) => {
+                me.stopPropagation()
+                onCellClick?.(ev)
+              }
 
               return (
                 <tr
@@ -203,45 +221,67 @@ export function SCTable({ edges, onRowClick }: SCTableProps) {
                   )}
                 >
                   {/* Entity name */}
-                  <td className="px-4 py-2 text-[11px] font-mono text-terminal-text">
+                  <td
+                    className="px-4 py-2 text-[11px] font-mono text-terminal-text cursor-pointer"
+                    onClick={cell({ type: 'entity', edge: e })}
+                  >
                     <div className="flex items-center gap-1.5 max-w-[200px]">
                       {e.sole_source && (
-                        <AlertTriangle size={9} className="text-red-400 flex-shrink-0" title="Sole source" />
+                        <span title="Sole source" className="flex items-center">
+                          <AlertTriangle size={9} className="text-red-400 flex-shrink-0" />
+                        </span>
                       )}
-                      <span className="truncate group-hover:text-white transition-colors">
+                      <span className="truncate group-hover:text-white transition-colors hover:underline hover:decoration-terminal-accent/40">
                         {e.entity_name}
                       </span>
                     </div>
                   </td>
 
                   {/* Direction */}
-                  <td className="px-2 py-2">
-                    <span className="text-[8px] font-mono" style={{ color: dirCfg.color }}>
-                      {e.direction === 'UPSTREAM' ? '↑ SUP' : e.direction === 'DOWNSTREAM' ? '↓ CUST' : '↔ COMP'}
+                  <td
+                    className="px-2 py-2 cursor-pointer"
+                    onClick={cell({ type: 'direction', direction: e.direction, edges: edges.filter(x => x.direction === e.direction) })}
+                  >
+                    <span className="text-[8px] font-mono hover:brightness-150 transition-all" style={{ color: dirCfg.color }}>
+                      {dirCfg.label}
                     </span>
                   </td>
 
                   {/* Type */}
-                  <td className="px-2 py-2 text-[9px] font-mono text-terminal-dim/70">
+                  <td
+                    className="px-2 py-2 text-[9px] font-mono text-terminal-dim/70 cursor-pointer hover:text-terminal-text transition-colors"
+                    onClick={cell({ type: 'edge', edge: e })}
+                  >
                     {(e.relationship_type ?? '').replaceAll('_', ' ')}
                   </td>
 
                   {/* Tier */}
-                  <td className="px-2 py-2 text-center">
+                  <td
+                    className="px-2 py-2 text-center cursor-pointer hover:text-terminal-text transition-colors"
+                    onClick={cell({ type: 'edge', edge: e })}
+                  >
                     <span className="text-[9px] font-mono text-terminal-dim/60">
                       T{e.tier ?? 1}
                     </span>
                   </td>
 
                   {/* Geo */}
-                  <td className="px-2 py-2 text-[9px] font-mono text-terminal-dim/70">
+                  <td
+                    className="px-2 py-2 text-[9px] font-mono text-terminal-dim/70 cursor-pointer hover:text-terminal-text hover:underline hover:decoration-terminal-accent/40 transition-colors"
+                    onClick={cell(e.hq_country
+                      ? { type: 'country', country: e.hq_country, edges: edges.filter(x => x.hq_country === e.hq_country) }
+                      : { type: 'edge', edge: e })}
+                  >
                     {e.hq_country ?? '—'}
                   </td>
 
                   {/* Exposure */}
-                  <td className="px-2 py-2">
+                  <td
+                    className="px-2 py-2 cursor-pointer"
+                    onClick={cell({ type: 'edge', edge: e })}
+                  >
                     {exp != null ? (
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 hover:brightness-125 transition-all">
                         <MiniBar value={exp} max={maxExp} color={e.pct_revenue != null ? '#22c55e' : '#0ea5e9'} />
                         <span className="text-[7px] font-mono text-terminal-dim/40">{expLabel}</span>
                       </div>
@@ -251,9 +291,12 @@ export function SCTable({ edges, onRowClick }: SCTableProps) {
                   </td>
 
                   {/* Risk */}
-                  <td className="px-2 py-2">
+                  <td
+                    className="px-2 py-2 cursor-pointer"
+                    onClick={cell({ type: 'edge', edge: e })}
+                  >
                     <span
-                      className={cn('text-[8px] font-mono border px-1.5 py-0.5 rounded-sm', bg)}
+                      className={cn('text-[8px] font-mono border px-1.5 py-0.5 rounded-sm hover:brightness-125 transition-all', bg)}
                       style={{ color }}
                     >
                       {label}
@@ -261,8 +304,11 @@ export function SCTable({ edges, onRowClick }: SCTableProps) {
                   </td>
 
                   {/* Confidence bar */}
-                  <td className="px-2 py-2">
-                    <div className="flex items-center gap-1.5">
+                  <td
+                    className="px-2 py-2 cursor-pointer"
+                    onClick={cell({ type: 'edge', edge: e })}
+                  >
+                    <div className="flex items-center gap-1.5 hover:brightness-125 transition-all">
                       <div className="w-10 h-1 bg-terminal-border rounded-full overflow-hidden">
                         <div
                           className="h-full rounded-full"
@@ -279,7 +325,10 @@ export function SCTable({ edges, onRowClick }: SCTableProps) {
                   </td>
 
                   {/* Disclosure */}
-                  <td className="px-2 py-2">
+                  <td
+                    className="px-2 py-2 cursor-pointer hover:brightness-125 transition-all"
+                    onClick={cell({ type: 'edge', edge: e })}
+                  >
                     <span
                       className="text-[8px] font-mono"
                       style={{ color: DISC_COLOR[e.disclosure_type ?? 'INFERRED'] }}

@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.models.article import EventCluster
+from app.intelligence.summarizer import deepdive_cluster_articles
 
 router = APIRouter()
 
@@ -22,6 +23,7 @@ async def list_clusters(
     limit: int = Query(default=50, le=200),
     active_only: bool = Query(default=True),
     min_volatility: float = Query(default=0.0, ge=0.0, le=1.0),
+    labeled_only: bool = Query(default=True),
 ):
     """List event clusters, newest first. Used for initial dashboard load."""
     q = select(EventCluster).order_by(EventCluster.last_updated_at.desc()).limit(limit)
@@ -29,6 +31,8 @@ async def list_clusters(
         q = q.where(EventCluster.is_active == True)
     if min_volatility > 0:
         q = q.where(EventCluster.volatility >= min_volatility)
+    if labeled_only:
+        q = q.where(EventCluster.label.isnot(None))
 
     result = await db.execute(q)
     clusters = result.scalars().all()
@@ -94,3 +98,35 @@ async def get_cluster(
             for m in cluster.members
         ],
     }
+
+@router.get("/{cluster_id}/deepdive")
+async def get_cluster_deepdive(
+    cluster_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Generate and return a live AI Deep Dive analysis for a cluster."""
+    from sqlalchemy.orm import selectinload
+    from app.models.article import ClusterMember
+    from fastapi import HTTPException
+    import logging
+    logger = logging.getLogger(__name__)
+
+    result = await db.execute(
+        select(EventCluster)
+        .options(selectinload(EventCluster.members).selectinload(ClusterMember.article))
+        .where(EventCluster.id == cluster_id)
+    )
+    cluster = result.scalar_one_or_none()
+    if not cluster:
+        raise HTTPException(status_code=404, detail="Cluster not found")
+        
+    articles = [m.article for m in cluster.members if m.article]
+    if not articles:
+        raise HTTPException(status_code=422, detail="No source articles found for this cluster.")
+
+    try:
+        analysis = await deepdive_cluster_articles(articles)
+        return {"analysis": analysis}
+    except Exception as e:
+        logger.exception("Failed to generate deep dive for cluster %s", cluster_id)
+        raise HTTPException(status_code=500, detail="Failed to generate deep dive analysis.")

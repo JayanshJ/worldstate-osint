@@ -198,9 +198,10 @@ async def maybe_trigger_intelligence(
     Uses weighted_score (sum of credibility scores) instead of raw count
     so a single Reuters article can trigger faster than 10 Reddit posts.
     """
-    # Weighted threshold: e.g. 3 Reuters articles (3 * 0.97 ≈ 2.9)
-    # or 8 Reddit posts (8 * 0.35 ≈ 2.8)
-    WEIGHTED_THRESHOLD = 2.5
+    # Weighted threshold: e.g. 2 Reuters articles (2 * 0.93 ≈ 1.86)
+    # or 2 CoinDesk + 1 CoinTelegraph (0.78+0.74+0.74 ≈ 2.26)
+    # or 3 TechCrunch/Verge (0.82+0.81+0.81 ≈ 2.44)
+    WEIGHTED_THRESHOLD = 1.8
 
     if cluster.weighted_score < WEIGHTED_THRESHOLD:
         return
@@ -316,6 +317,8 @@ async def run_cluster_cycle() -> None:
                 await add_members_to_cluster(db, existing.id, cluster_ids, centroid, cluster_vecs)
                 await update_cluster_centroid(db, existing, new_centroid, new_member_count, new_score)
                 await db.commit()
+                # Refresh so in-memory object reflects the UPDATE (weighted_score, member_count)
+                await db.refresh(existing)
                 await maybe_trigger_intelligence(db, existing)
             else:
                 # Create new cluster
@@ -323,6 +326,8 @@ async def run_cluster_cycle() -> None:
                 await add_members_to_cluster(db, cluster.id, cluster_ids, centroid, cluster_vecs)
                 await update_cluster_centroid(db, cluster, centroid, len(cluster_ids), weighted_score)
                 await db.commit()
+                # Refresh so in-memory object reflects the UPDATE (weighted_score, member_count)
+                await db.refresh(cluster)
                 await maybe_trigger_intelligence(db, cluster)
 
 

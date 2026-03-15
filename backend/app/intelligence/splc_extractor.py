@@ -283,48 +283,42 @@ async def _fetch_sec_excerpt(meta: dict, client: httpx.AsyncClient) -> str:
 # ─── LLM extraction ───────────────────────────────────────────────────────
 
 _SYSTEM_PROMPT = """\
-You are a senior financial supply chain analyst with encyclopedic knowledge of global corporations.
+You are a senior financial analyst with encyclopedic knowledge of global corporations.
 
 You will receive:
   [WIKIPEDIA]  — Wikipedia article(s) for the company (primary source — trust named entities here)
   [SEC 10-K]   — excerpt from the latest SEC 10-K filing (supplementary context)
 
-Your task: extract the MOST COMPREHENSIVE list of named supply chain relationships possible.
+Your task: extract a COMPREHENSIVE relationship graph covering supply chain, ownership, governance, analyst coverage, and industry classification.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 EXTRACTION RULES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-1. REAL NAMES ONLY — every entity must have a specific company name.
-   GOOD: "TSMC", "Foxconn Technology Group", "Samsung Electronics"
-   BAD:  "a Taiwanese chip maker", "contract manufacturers", "certain customers"
+1. REAL NAMES ONLY — every entity must be a specific named company or person.
+   GOOD: "TSMC", "Foxconn Technology Group", "Tim Cook", "Vanguard Group"
+   BAD:  "a Taiwanese chip maker", "contract manufacturers", "an anonymous fund"
 
 2. USE ALL THREE SOURCES:
-   a) Wikipedia text provided — named companies mentioned there
-   b) SEC 10-K text provided — named companies mentioned there
-   c) YOUR TRAINING KNOWLEDGE — for well-known companies you know the full supply chain.
-      Apple → TSMC, Foxconn/Hon Hai, Pegatron, Luxshare, Samsung, SK Hynix, Broadcom, Qualcomm...
-      TSMC → Apple, NVIDIA, AMD, Qualcomm, Intel... as DOWNSTREAM customers
-      Use this knowledge aggressively. It is accurate for well-known companies.
+   a) Wikipedia text provided — named entities mentioned there
+   b) SEC 10-K text provided — named entities mentioned there
+   c) YOUR TRAINING KNOWLEDGE — use aggressively for well-known companies.
 
-3. MINIMUM TARGETS (extract at least this many if they exist publicly):
+3. MINIMUM TARGETS per direction:
    • UPSTREAM suppliers:   ≥ 15 (components, manufacturing, materials, logistics, software)
    • DOWNSTREAM customers: ≥ 8  (major buyers, distributors, channel partners)
-   • COMPETITORS:          ≥ 5  (direct market competitors)
+   • COMPETITOR:           ≥ 5  (direct market competitors)
+   • SHAREHOLDER:          ≥ 8  (institutional holders: Vanguard, BlackRock, State Street, Fidelity, etc.)
+   • BOARD:                ≥ 6  (CEO, CFO, COO, independent directors — use full names)
+   • ANALYST:              ≥ 5  (Wall Street banks/brokerages that cover this stock: Goldman Sachs, Morgan Stanley, JPMorgan, etc.)
+   • INDUSTRY:             2–5  (GICS sector, GICS industry, SIC description)
 
-4. INCLUDE ALL CATEGORIES:
-   Suppliers: raw materials, components, chip foundries, assemblers/EMS, ODMs, software, cloud, logistics
-   Customers: direct enterprise customers, major retailers, distribution partners, OEM customers
-   Competitors: all direct product/market competitors you know
+4. RESOLVE ALIASES to best-known name:
+   "Foxconn" → "Foxconn Technology Group"
+   "Samsung" → "Samsung Electronics"
 
-5. RESOLVE ALIASES to best-known name:
-   "Foxconn" → "Foxconn Technology Group" (Hon Hai Precision Industry)
-   "Samsung" → "Samsung Electronics" (not "Samsung Group")
+5. TIER (supply chain only): 1 = direct, 2 = indirect
 
-6. TIER ASSIGNMENT:
-   Tier 1 = direct supplier/customer (direct commercial relationship)
-   Tier 2 = supplier's supplier (indirect, e.g. component supplier to an EMS)
-
-7. COUNTRY CODES: Use ISO-3166-1 alpha-3 (TWN, CHN, USA, KOR, JPN, DEU, etc.)
+6. COUNTRY CODES: ISO-3166-1 alpha-3 (TWN, CHN, USA, KOR, JPN, DEU, etc.)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 OUTPUT FORMAT — return ONLY valid JSON:
@@ -333,9 +327,9 @@ OUTPUT FORMAT — return ONLY valid JSON:
   "company_name": "<official legal name>",
   "relationships": [
     {
-      "entity_name":       "<real company name>",
-      "direction":         "UPSTREAM" | "DOWNSTREAM" | "COMPETITOR",
-      "relationship_type": "SUPPLIER" | "CUSTOMER" | "CONTRACT_MANUFACTURER" | "FOUNDRY" | "JV_PARTNER" | "LICENSEE" | "DISTRIBUTOR" | "RESELLER" | "LOGISTICS",
+      "entity_name":       "<real company or person name>",
+      "direction":         "UPSTREAM" | "DOWNSTREAM" | "COMPETITOR" | "SHAREHOLDER" | "BOARD" | "ANALYST" | "INDUSTRY",
+      "relationship_type": "SUPPLIER" | "CUSTOMER" | "CONTRACT_MANUFACTURER" | "FOUNDRY" | "JV_PARTNER" | "LICENSEE" | "DISTRIBUTOR" | "RESELLER" | "LOGISTICS" | "INSTITUTION" | "MUTUAL_FUND" | "CEO" | "CFO" | "COO" | "DIRECTOR" | "BUY" | "HOLD" | "SELL" | "SECTOR" | "INDUSTRY" | "SIC",
       "tier":              1,
       "pct_revenue":       <float | null>,
       "pct_cogs":          <float | null>,
@@ -343,28 +337,27 @@ OUTPUT FORMAT — return ONLY valid JSON:
       "hq_country":        "<ISO-3166-1 alpha-3 | null>",
       "confidence":        <0.1–1.0>,
       "disclosure_type":   "DISCLOSED" | "ESTIMATED" | "INFERRED",
-      "evidence":          "<verbatim quote from source, OR 'Model knowledge: [brief reason]'>"
+      "evidence":          "<source quote OR 'Model knowledge: [brief reason]'>"
     }
   ]
 }
 
+Direction semantics:
+  UPSTREAM   = entity supplies TO the focal company
+  DOWNSTREAM = focal company supplies TO this entity (customer)
+  COMPETITOR = direct competitor in the same primary market
+  SHAREHOLDER = institutional or mutual fund shareholder (entity_name = fund name)
+  BOARD      = board director or C-suite executive (entity_name = person name)
+  ANALYST    = brokerage/bank providing analyst coverage (entity_name = firm name, relationship_type = BUY/HOLD/SELL)
+  INDUSTRY   = industry/sector classification (entity_name = classification label, relationship_type = SECTOR/INDUSTRY/SIC)
+
 Confidence:
   1.0  = named + quantified in source
   0.85 = named explicitly in Wikipedia or 10-K
-  0.65 = well-known/widely reported relationship (model knowledge)
-  0.40 = inferred from strong context
+  0.65 = well-known/widely reported (model knowledge)
+  0.40 = inferred from context
 
-disclosure_type:
-  DISCLOSED = named with figures in filing/Wikipedia
-  ESTIMATED = named; figures estimated from context
-  INFERRED  = from model knowledge or contextual inference
-
-direction:
-  UPSTREAM   = entity supplies TO the focal company
-  DOWNSTREAM = focal company supplies TO this entity (i.e. this entity is a customer)
-  COMPETITOR = competes in the same primary market
-
-Do NOT hallucinate obscure or unverifiable relationships. If uncertain, use confidence ≤ 0.4.
+Do NOT hallucinate unverifiable relationships. If uncertain, use confidence ≤ 0.4.
 """
 
 
@@ -534,11 +527,12 @@ async def extract_supply_chain(ticker: str, db: AsyncSession) -> dict:
         await db.execute(delete(SCEdge).where(SCEdge.focal_id == company.id))
         await db.flush()
 
-    # 6. Insert edges
+    # 6. Insert edges (all directions: UPSTREAM, DOWNSTREAM, COMPETITOR, SHAREHOLDER, BOARD, ANALYST, INDUSTRY)
+    _VALID_DIRECTIONS = {"UPSTREAM", "DOWNSTREAM", "COMPETITOR", "SHAREHOLDER", "BOARD", "ANALYST", "INDUSTRY"}
     edges_inserted = 0
     for rel in relationships:
         direction = rel.get("direction", "UPSTREAM")
-        if direction not in ("UPSTREAM", "DOWNSTREAM", "COMPETITOR"):
+        if direction not in _VALID_DIRECTIONS:
             continue
 
         entity_name = (rel.get("entity_name") or "").strip()
@@ -550,7 +544,7 @@ async def extract_supply_chain(ticker: str, db: AsyncSession) -> dict:
             entity_name       = entity_name[:255],
             entity_ticker     = rel.get("entity_ticker"),
             direction         = direction,
-            relationship_type = rel.get("relationship_type", "SUPPLIER"),
+            relationship_type = (rel.get("relationship_type") or "SUPPLIER")[:50],
             tier              = int(rel.get("tier") or 1),
             pct_revenue       = rel.get("pct_revenue"),
             pct_cogs          = rel.get("pct_cogs"),
@@ -581,3 +575,135 @@ async def extract_supply_chain(ticker: str, db: AsyncSession) -> dict:
         "filing_date":   meta.get("filing_date"),
         "source":        "Wikipedia + SEC EDGAR + LLM knowledge (free)",
     }
+
+
+async def enrich_supply_chain_live(ticker: str) -> None:
+    """
+    Background task: fetch live SHAREHOLDER / BOARD / ANALYST / INDUSTRY data from
+    yfinance (Yahoo Finance / SEC 13F aggregates) and upsert into sc_edges.
+
+    Retries up to 3 times with exponential back-off to handle Yahoo Finance 429s.
+    Opens its own DB session so it can run after the HTTP response is sent.
+    """
+    import asyncio
+    from app.core.database import AsyncSessionLocal
+    from app.intelligence.company_extractor import get_company_profile
+
+    _LIVE_DIRECTIONS = {"SHAREHOLDER", "BOARD", "ANALYST", "INDUSTRY"}
+
+    async def _fetch_with_retry(t: str, max_attempts: int = 3) -> dict:
+        for attempt in range(max_attempts):
+            try:
+                profile = await get_company_profile(t)
+                # If yfinance returned something useful, return it
+                if (profile.get("board") or
+                        profile.get("analysts", {}).get("recent") or
+                        profile.get("shareholders", {}).get("institutions")):
+                    return profile
+            except Exception as exc:
+                logger.warning("enrich attempt %d failed for %s: %s", attempt + 1, t, exc)
+            if attempt < max_attempts - 1:
+                await asyncio.sleep(5 * (2 ** attempt))  # 5s, 10s, 20s
+        return {}
+
+    ticker = ticker.upper()
+    try:
+        profile = await _fetch_with_retry(ticker)
+        if not profile:
+            logger.warning("SPLC live enrichment: no yfinance data for %s after retries", ticker)
+            return
+
+        async with AsyncSessionLocal() as db:
+            res     = await db.execute(select(SCCompany).where(SCCompany.ticker == ticker))
+            company = res.scalar_one_or_none()
+            if company is None:
+                return
+
+            as_of = date.today()
+
+            # Remove stale live edges before re-inserting
+            await db.execute(
+                delete(SCEdge).where(
+                    SCEdge.focal_id == company.id,
+                    SCEdge.direction.in_(list(_LIVE_DIRECTIONS)),
+                )
+            )
+
+            count = 0
+
+            # ── Shareholders ─────────────────────────────────────────
+            shareholders = (
+                profile.get("shareholders", {}).get("institutions", []) +
+                profile.get("shareholders", {}).get("mutual_funds", [])
+            )
+            for holder in shareholders:
+                name = (holder.get("name") or "").strip()
+                if not name:
+                    continue
+                db.add(SCEdge(
+                    focal_id          = company.id,
+                    entity_name       = name[:255],
+                    direction         = "SHAREHOLDER",
+                    relationship_type = holder.get("type", "INSTITUTION"),
+                    pct_revenue       = round(holder.get("pct_held") or 0, 2) or None,
+                    disclosure_type   = "DISCLOSED",
+                    confidence        = 0.95,
+                    as_of_date        = as_of,
+                ))
+                count += 1
+
+            # ── Board / executives ────────────────────────────────────
+            for member in profile.get("board", []):
+                name = (member.get("name") or "").strip()
+                if not name:
+                    continue
+                db.add(SCEdge(
+                    focal_id          = company.id,
+                    entity_name       = name[:255],
+                    direction         = "BOARD",
+                    relationship_type = (member.get("title") or "DIRECTOR")[:50],
+                    disclosure_type   = "DISCLOSED",
+                    confidence        = 0.95,
+                    as_of_date        = as_of,
+                ))
+                count += 1
+
+            # ── Analyst firms ─────────────────────────────────────────
+            seen_firms: set[str] = set()
+            for rating in profile.get("analysts", {}).get("recent", []):
+                firm = (rating.get("firm") or "").strip()
+                if not firm or firm in seen_firms:
+                    continue
+                seen_firms.add(firm)
+                db.add(SCEdge(
+                    focal_id          = company.id,
+                    entity_name       = firm[:255],
+                    direction         = "ANALYST",
+                    relationship_type = rating.get("rating", "HOLD"),
+                    disclosure_type   = "DISCLOSED",
+                    confidence        = 0.90,
+                    as_of_date        = as_of,
+                ))
+                count += 1
+
+            # ── Industries ────────────────────────────────────────────
+            for ind in profile.get("industries", []):
+                label = (ind.get("label") or "").strip()
+                if not label:
+                    continue
+                db.add(SCEdge(
+                    focal_id          = company.id,
+                    entity_name       = label[:255],
+                    direction         = "INDUSTRY",
+                    relationship_type = ind.get("type", "INDUSTRY"),
+                    disclosure_type   = "DISCLOSED",
+                    confidence        = 1.0,
+                    as_of_date        = as_of,
+                ))
+                count += 1
+
+            await db.commit()
+            logger.info("SPLC live enrichment: %s → %d live edges added", ticker, count)
+
+    except Exception as exc:
+        logger.exception("SPLC live enrichment crashed for %s: %s", ticker, exc)
