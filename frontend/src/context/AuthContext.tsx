@@ -2,20 +2,39 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 
 const TOKEN_KEY = 'ws_token'
 
+export interface AuthUser {
+  id:       string
+  email:    string
+  is_admin: boolean
+  org_id:   string | null
+}
+
 interface AuthContextValue {
-  token: string | null
+  token:  string | null
+  user:   AuthUser | null
   login:  (email: string, password: string) => Promise<void>
   logout: () => void
 }
 
 const AuthContext = createContext<AuthContextValue>({
   token:  null,
+  user:   null,
   login:  async () => {},
   logout: () => {},
 })
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY))
+  const [user,  setUser]  = useState<AuthUser | null>(null)
+
+  // Fetch /auth/me whenever we have a token
+  useEffect(() => {
+    if (!token) { setUser(null); return }
+    fetch('/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => setUser(data ?? null))
+      .catch(() => setUser(null))
+  }, [token])
 
   const login = useCallback(async (email: string, password: string) => {
     const body = new URLSearchParams({ username: email, password })
@@ -36,6 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY)
     setToken(null)
+    setUser(null)
   }, [])
 
   // Keep token state in sync across tabs
@@ -45,7 +65,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('storage', handler)
   }, [])
 
-  return <AuthContext.Provider value={{ token, login, logout }}>{children}</AuthContext.Provider>
+  return (
+    <AuthContext.Provider value={{ token, user, login, logout }}>
+      {children}
+    </AuthContext.Provider>
+  )
 }
 
 export function useAuth() {

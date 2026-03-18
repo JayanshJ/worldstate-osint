@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
-import { Activity, Bell, Globe, Search, Wifi, WifiOff, AlertTriangle } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Activity, Bell, Globe, LogOut, Search, Settings, ShieldCheck, Wifi, WifiOff, AlertTriangle } from 'lucide-react'
 import { useWebSocket } from '@/context/WebSocketContext'
+import { useAuth } from '@/context/AuthContext'
 import type { ConnectionStatus } from '@/types'
 import { cn, formatUtcClock } from '@/lib/utils'
 
@@ -73,15 +74,31 @@ async function fetchMetals(): Promise<MetalsData> {
 }
 
 interface Props {
-  onSearchOpen: () => void
-  onAlertsOpen: () => void
-  alertCount:   number
+  onSearchOpen:  () => void
+  onAlertsOpen:  () => void
+  onSettingsOpen:() => void
+  onAdminOpen:   () => void
+  alertCount:    number
 }
 
-export function Header({ onSearchOpen, onAlertsOpen, alertCount }: Props) {
+export function Header({ onSearchOpen, onAlertsOpen, onSettingsOpen, onAdminOpen, alertCount }: Props) {
   const { status } = useWebSocket()
+  const { user, logout } = useAuth()
   const [clock,   setClock]   = useState(formatUtcClock())
   const [metals,  setMetals]  = useState<MetalsData>(EMPTY_METALS)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   useEffect(() => {
     const id = setInterval(() => setClock(formatUtcClock()), 1000)
@@ -154,6 +171,58 @@ export function Header({ onSearchOpen, onAlertsOpen, alertCount }: Props) {
         </button>
 
         <ConnectionIndicator status={status} />
+
+        {/* User menu */}
+        <div ref={menuRef} className="relative">
+          <button
+            onClick={() => setMenuOpen(v => !v)}
+            className="flex items-center justify-center w-7 h-7 rounded-sm bg-terminal-accent/20 border border-terminal-accent/40 text-terminal-accent font-mono font-bold text-[11px] hover:bg-terminal-accent/30 transition-colors"
+            title={user?.email ?? 'Account'}
+          >
+            {user?.email?.[0]?.toUpperCase() ?? '?'}
+          </button>
+
+          {menuOpen && (
+            <div className="absolute right-0 top-full mt-1 w-56 bg-gray-950 border border-gray-800 rounded shadow-xl z-50 py-1 font-mono text-xs">
+              {/* User info */}
+              <div className="px-3 py-2 border-b border-gray-800">
+                <p className="text-gray-400 text-[10px] uppercase tracking-widest">Signed in as</p>
+                <p className="text-white truncate mt-0.5">{user?.email}</p>
+                {user?.is_admin && (
+                  <span className="inline-flex items-center gap-1 mt-1 text-[9px] text-red-400 border border-red-800 px-1.5 py-0.5 rounded">
+                    <ShieldCheck size={8} /> ADMIN
+                  </span>
+                )}
+              </div>
+
+              {/* Actions */}
+              <button
+                onClick={() => { setMenuOpen(false); onSettingsOpen() }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-gray-300 hover:bg-gray-900 hover:text-white transition-colors"
+              >
+                <Settings size={12} /> Account Settings
+              </button>
+
+              {user?.is_admin && (
+                <button
+                  onClick={() => { setMenuOpen(false); onAdminOpen() }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-red-400 hover:bg-gray-900 hover:text-red-300 transition-colors"
+                >
+                  <ShieldCheck size={12} /> Admin Panel
+                </button>
+              )}
+
+              <div className="border-t border-gray-800 mt-1" />
+
+              <button
+                onClick={() => { setMenuOpen(false); logout() }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-gray-500 hover:bg-gray-900 hover:text-gray-300 transition-colors"
+              >
+                <LogOut size={12} /> Sign Out
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </header>
   )

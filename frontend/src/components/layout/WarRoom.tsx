@@ -13,6 +13,8 @@ import { AlertPanel } from '@/components/alerts/AlertPanel'
 import { WorldMapView } from '@/components/map/WorldMapView'
 import { StrategyFeed } from '@/components/strategies/StrategyFeed'
 import { SupplyChainView } from '@/components/supply-chain/SupplyChainView'
+import { AccountSettings } from '@/components/auth/AccountSettings'
+import { AdminPanel } from '@/components/admin/AdminPanel'
 import { useAlerts } from '@/hooks/useAlerts'
 import { cn } from '@/lib/utils'
 
@@ -39,6 +41,8 @@ export function WarRoom() {
 
   const [searchOpen,      setSearchOpen]      = useState(false)
   const [alertsOpen,      setAlertsOpen]      = useState(false)
+  const [settingsOpen,    setSettingsOpen]    = useState(false)
+  const [adminOpen,       setAdminOpen]       = useState(false)
   const [detailClusterId, setDetailClusterId] = useState<string | null>(
     clusterParams?.id ?? null,
   )
@@ -95,8 +99,10 @@ export function WarRoom() {
     <div className="flex flex-col h-screen w-screen bg-terminal-bg overflow-hidden">
       {/* Top header */}
       <Header
-        onSearchOpen={() => setSearchOpen(true)}
-        onAlertsOpen={() => setAlertsOpen(true)}
+        onSearchOpen={()  => setSearchOpen(true)}
+        onAlertsOpen={()  => setAlertsOpen(true)}
+        onSettingsOpen={() => setSettingsOpen(true)}
+        onAdminOpen={()   => setAdminOpen(true)}
         alertCount={unreadCount}
       />
 
@@ -221,6 +227,14 @@ export function WarRoom() {
           />
         )}
       </AnimatePresence>
+
+      {settingsOpen && (
+        <AccountSettings onClose={() => setSettingsOpen(false)} />
+      )}
+
+      {adminOpen && (
+        <AdminPanel onClose={() => setAdminOpen(false)} />
+      )}
     </div>
   )
 }
