@@ -6,7 +6,7 @@ import re
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import select
+from sqlalchemy import delete as sql_delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -76,3 +76,27 @@ async def me(user: User = Depends(get_current_user)):
         "org_id":     str(user.org_id) if user.org_id else None,
         "created_at": user.created_at,
     }
+
+
+@router.delete("/me", status_code=204)
+async def delete_me(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """GDPR right-to-erasure: permanently deletes the calling user's account."""
+    from app.models.alert import AlertWatch
+    from app.models.organization import Organization
+
+    # Remove the user's alerts
+    await db.execute(sql_delete(AlertWatch).where(AlertWatch.org_id == user.org_id))
+    # Remove the user record
+    await db.execute(sql_delete(User).where(User.id == user.id))
+    # If the org is now empty, remove it too
+    remaining = (
+        await db.execute(
+            select(func.count()).select_from(User).where(User.org_id == user.org_id)
+        )
+    ).scalar() or 0
+    if remaining == 0 and user.org_id:
+        await db.execute(sql_delete(Organization).where(Organization.id == user.org_id))
+    await db.commit()

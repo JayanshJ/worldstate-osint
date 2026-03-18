@@ -114,6 +114,19 @@ export const api = {
     get:     (ticker: string) => req<CompanyProfile>(`${BASE}/company/${ticker}`),
     refresh: (ticker: string) => post<CompanyProfile>(`${BASE}/company/${ticker}/refresh`, {}),
   },
+
+  admin: {
+    listOrgs: ()                        => req<any[]>('/admin/orgs'),
+    getOrg:   (id: string)              => req<any>(`/admin/orgs/${id}`),
+    deleteOrg:(id: string)              => del(`/admin/orgs/${id}`),
+    usage:    (days = 30)               => req<any[]>('/admin/usage', { days }),
+    auditLog: (limit = 200, offset = 0) => req<any[]>('/admin/audit', { limit, offset }),
+    toggleAdmin: (userId: string)       => post<any>(`/admin/users/${userId}/toggle-admin`, {}),
+  },
+
+  account: {
+    deleteMe: () => del('/auth/me'),
+  },
 }
 
 // ─── Extra types ───────────────────────────────────────────────────────────

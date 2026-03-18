@@ -54,6 +54,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     volumes:
       - ./backend:/app
     command: >
@@ -122,7 +128,34 @@ services:
     depends_on:
       - api
 
+  # ─── DB Backup (runs daily at 02:00 UTC via cron) ─────────────────────────
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-worldstate}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-worldstate_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-worldstate}
+      POSTGRES_HOST: postgres
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-}
+      BACKUP_DIR: /backups
+      RETENTION_DAYS: "7"
+    volumes:
+      - ./backend/scripts/backup.sh:/backup.sh:ro
+      - backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Run once at startup then every 24 h via sleep loop
+    command: >
+      sh -c "chmod +x /backup.sh &&
+             while true; do
+               /backup.sh;
+               sleep 86400;
+             done"
+
 volumes:
   pgdata:
   redisdata:
   playwright_cache:
+  backups:
