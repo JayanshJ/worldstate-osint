@@ -11,9 +11,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.security import get_current_user
 from app.models.alert import AlertFiring, AlertWatch
 
-from app.core.security import get_current_user
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
@@ -63,9 +63,21 @@ def _to_out(w: AlertWatch) -> WatchOut:
 
 # ─── Routes ───────────────────────────────────────────────────────────────
 
+def _org_filter(user):
+    """Return a SQLAlchemy WHERE clause scoping to the user's org (or NULL org for legacy rows)."""
+    if user.org_id is None:
+        return AlertWatch.org_id.is_(None)
+    return AlertWatch.org_id == user.org_id
+
+
 @router.get("/", response_model=list[WatchOut])
-async def list_watches(db: Annotated[AsyncSession, Depends(get_db)]):
-    result = await db.execute(select(AlertWatch).order_by(AlertWatch.created_at.desc()))
+async def list_watches(
+    db:   Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[object, Depends(get_current_user)],
+):
+    result = await db.execute(
+        select(AlertWatch).where(_org_filter(user)).order_by(AlertWatch.created_at.desc())
+    )
     return [_to_out(w) for w in result.scalars().all()]
 
 
@@ -73,11 +85,12 @@ async def list_watches(db: Annotated[AsyncSession, Depends(get_db)]):
 async def create_watch(
     body: WatchCreate,
     db:   Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[object, Depends(get_current_user)],
 ):
     if not any([body.keywords, body.entities, body.source_ids]):
         raise HTTPException(400, "Provide at least one of: keywords, entities, source_ids")
 
-    watch = AlertWatch(**body.model_dump())
+    watch = AlertWatch(**body.model_dump(), org_id=user.org_id)
     db.add(watch)
     await db.flush()
     await db.commit()
@@ -88,8 +101,11 @@ async def create_watch(
 async def toggle_watch(
     watch_id: uuid.UUID,
     db:       Annotated[AsyncSession, Depends(get_db)],
+    user:     Annotated[object, Depends(get_current_user)],
 ):
-    result = await db.execute(select(AlertWatch).where(AlertWatch.id == watch_id))
+    result = await db.execute(
+        select(AlertWatch).where(AlertWatch.id == watch_id, _org_filter(user))
+    )
     watch = result.scalar_one_or_none()
     if not watch:
         raise HTTPException(404, "Watch not found")
@@ -102,8 +118,11 @@ async def toggle_watch(
 async def delete_watch(
     watch_id: uuid.UUID,
     db:       Annotated[AsyncSession, Depends(get_db)],
+    user:     Annotated[object, Depends(get_current_user)],
 ):
-    result = await db.execute(select(AlertWatch).where(AlertWatch.id == watch_id))
+    result = await db.execute(
+        select(AlertWatch).where(AlertWatch.id == watch_id, _org_filter(user))
+    )
     watch = result.scalar_one_or_none()
     if not watch:
         raise HTTPException(404, "Watch not found")
@@ -115,8 +134,16 @@ async def delete_watch(
 async def get_firings(
     watch_id: uuid.UUID,
     db:       Annotated[AsyncSession, Depends(get_db)],
+    user:     Annotated[object, Depends(get_current_user)],
     limit:    int = 20,
 ):
+    # Verify watch belongs to user's org before returning firings
+    watch_check = await db.execute(
+        select(AlertWatch).where(AlertWatch.id == watch_id, _org_filter(user))
+    )
+    if not watch_check.scalar_one_or_none():
+        raise HTTPException(404, "Watch not found")
+
     result = await db.execute(
         select(AlertFiring)
         .where(AlertFiring.watch_id == watch_id)

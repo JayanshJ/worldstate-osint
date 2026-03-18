@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import alerts, clusters, company, feed, metals, search, stats, strategies, websocket, research
+from app.api.routes import alerts, clusters, company, feed, metals, orgs, search, stats, strategies, websocket, research
 from app.api.routes import supply_chain, auth
 from app.api.routes.metals import start_metals_background
 from app.core.config import get_settings
@@ -13,6 +13,7 @@ from app.models.alert import AlertWatch  # noqa: F401 — registers alert tables
 from app.models.article import Base
 from app.models.strategy import MarketStrategy  # noqa: F401 — registers table with Base
 from app.models.supply_chain import SCCompany, SCEdge  # noqa: F401 — registers SC tables
+from app.models.organization import Organization  # noqa: F401 — registers org table with Base
 from app.models.user import User  # noqa: F401 — registers users table with Base
 
 settings = get_settings()
@@ -45,6 +46,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router,       prefix="/auth",              tags=["auth"])
+app.include_router(orgs.router,       prefix="/api/v1/orgs",       tags=["orgs"])
 app.include_router(clusters.router,   prefix="/api/v1/clusters",   tags=["clusters"])
 app.include_router(metals.router,     prefix="/api/v1/metals",     tags=["metals"])
 app.include_router(feed.router,       prefix="/api/v1/feed",       tags=["feed"])

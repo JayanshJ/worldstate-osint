@@ -10,16 +10,34 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; WorldState/1.0)"}
 
+# Commodities fetched and their display config
+# (cache_key, gold-api symbol, price_format)
+# price_format: "usd_int" = $1,234  "usd_dec" = $12.34  "usd_2dp" = $123.45
+_COMMODITIES: list[tuple[str, str, str]] = [
+    ("gold",     "XAU",   "usd_int"),
+    ("silver",   "XAG",   "usd_dec"),
+    ("platinum", "XPT",   "usd_int"),
+    ("wti",      "USOIL", "usd_2dp"),
+]
+
 # In-memory cache
-_cache: dict = {
-    "gold":       {"price": "···", "change": None},
-    "silver":     {"price": "···", "change": None},
-    "fetched_at": 0.0,
-}
-# Day-open prices so we can compute intraday % change
-_day_open: dict = {"gold": 0.0, "silver": 0.0, "date": ""}
+_cache: dict = {key: {"price": "···", "change": None} for key, *_ in _COMMODITIES}
+_cache["fetched_at"] = 0.0
+
+# Day-open prices for intraday % change
+_day_open: dict = {key: 0.0 for key, *_ in _COMMODITIES}
+_day_open["date"] = ""
+
 _CACHE_TTL   = 60   # seconds between refreshes
 _refresh_task = None
+
+
+def _fmt_price(current: float, fmt: str) -> str:
+    if fmt == "usd_int":
+        return f"${current:,.0f}"
+    if fmt == "usd_dec":
+        return f"${current:.2f}"
+    return f"${current:.2f}"
 
 
 def _intraday_change(current: float, key: str) -> float | None:
@@ -27,35 +45,32 @@ def _intraday_change(current: float, key: str) -> float | None:
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     if _day_open["date"] != today:
         _day_open["date"] = today
-        _day_open["gold"]   = 0.0
-        _day_open["silver"] = 0.0
+        for k, *_ in _COMMODITIES:
+            _day_open[k] = 0.0
     if _day_open[key] == 0.0:
         _day_open[key] = current
         return None
     return round((current - _day_open[key]) / _day_open[key] * 100, 2)
 
 
-async def _fetch_gold_api(symbol: str, client: httpx.AsyncClient, key: str) -> dict:
-    """
-    gold-api.com — completely free, no API key needed.
-    Symbols: XAU (gold), XAG (silver)
-    """
+async def _fetch_gold_api(symbol: str, client: httpx.AsyncClient, key: str, fmt: str) -> dict:
+    """gold-api.com — free, no API key. Supports metals and USOIL."""
     url = f"https://api.gold-api.com/price/{symbol}"
     r = await client.get(url, headers=HEADERS, timeout=10, follow_redirects=True)
     r.raise_for_status()
     data    = r.json()
     current = float(data["price"])
     change  = _intraday_change(current, key)
-    price   = f"${current:,.0f}" if current >= 1_000 else f"${current:.2f}"
+    price   = _fmt_price(current, fmt)
     return {"price": price, "change": change}
 
 
-async def _fetch_with_retry(symbol: str, key: str, client: httpx.AsyncClient, retries: int = 2) -> dict | None:
+async def _fetch_with_retry(symbol: str, key: str, fmt: str, client: httpx.AsyncClient, retries: int = 2) -> dict | None:
     for attempt in range(retries + 1):
         try:
             if attempt > 0:
                 await asyncio.sleep(1.5 * attempt)
-            return await _fetch_gold_api(symbol, client, key)
+            return await _fetch_gold_api(symbol, client, key, fmt)
         except Exception:
             pass
     return None
@@ -63,14 +78,11 @@ async def _fetch_with_retry(symbol: str, key: str, client: httpx.AsyncClient, re
 
 async def _refresh_cache() -> None:
     async with httpx.AsyncClient() as client:
-        gold   = await _fetch_with_retry("XAU", "gold",   client)
-        await asyncio.sleep(0.3)
-        silver = await _fetch_with_retry("XAG", "silver", client)
-
-    if gold:
-        _cache["gold"] = gold
-    if silver:
-        _cache["silver"] = silver
+        for key, symbol, fmt in _COMMODITIES:
+            result = await _fetch_with_retry(symbol, key, fmt, client)
+            if result:
+                _cache[key] = result
+            await asyncio.sleep(0.3)
     _cache["fetched_at"] = time.time()
 
 
@@ -92,7 +104,11 @@ async def start_metals_background() -> None:
 
 @router.get("")
 async def get_metals():
-    # Inline fetch only if cache was never populated
     if _cache["fetched_at"] == 0.0:
         await _refresh_cache()
-    return JSONResponse({"gold": _cache["gold"], "silver": _cache["silver"]})
+    return JSONResponse({
+        "gold":     _cache["gold"],
+        "silver":   _cache["silver"],
+        "platinum": _cache["platinum"],
+        "wti":      _cache["wti"],
+    })

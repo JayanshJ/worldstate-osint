@@ -47,10 +47,28 @@ function MetalChip({ label, price, change, color }: { label: string; price: stri
 }
 
 interface MetalPrice { price: string; change: number | null }
+interface MetalsData {
+  gold:     MetalPrice
+  silver:   MetalPrice
+  platinum: MetalPrice
+  wti:      MetalPrice
+}
 
-async function fetchMetals(): Promise<{ gold: MetalPrice; silver: MetalPrice }> {
-  const res = await fetch('/api/v1/metals')
-  if (!res.ok) return { gold: { price: '---', change: null }, silver: { price: '---', change: null } }
+const EMPTY_METALS: MetalsData = {
+  gold:     { price: '---', change: null },
+  silver:   { price: '---', change: null },
+  platinum: { price: '---', change: null },
+  wti:      { price: '---', change: null },
+}
+
+async function fetchMetals(): Promise<MetalsData> {
+  const res = await fetch('/api/v1/metals', {
+    headers: (() => {
+      const t = localStorage.getItem('ws_token')
+      return t ? { Authorization: `Bearer ${t}` } : {}
+    })(),
+  })
+  if (!res.ok) return EMPTY_METALS
   return res.json()
 }
 
@@ -62,9 +80,8 @@ interface Props {
 
 export function Header({ onSearchOpen, onAlertsOpen, alertCount }: Props) {
   const { status } = useWebSocket()
-  const [clock, setClock] = useState(formatUtcClock())
-  const [gold,  setGold]  = useState<MetalPrice>({ price: '···', change: null })
-  const [silver, setSilver] = useState<MetalPrice>({ price: '···', change: null })
+  const [clock,   setClock]   = useState(formatUtcClock())
+  const [metals,  setMetals]  = useState<MetalsData>(EMPTY_METALS)
 
   useEffect(() => {
     const id = setInterval(() => setClock(formatUtcClock()), 1000)
@@ -72,11 +89,7 @@ export function Header({ onSearchOpen, onAlertsOpen, alertCount }: Props) {
   }, [])
 
   useEffect(() => {
-    const load = async () => {
-      const { gold: g, silver: s } = await fetchMetals()
-      setGold(g)
-      setSilver(s)
-    }
+    const load = async () => setMetals(await fetchMetals())
     load()
     const id = setInterval(load, 60_000)
     return () => clearInterval(id)
@@ -101,8 +114,10 @@ export function Header({ onSearchOpen, onAlertsOpen, alertCount }: Props) {
       <div className="flex items-center gap-4 flex-1 overflow-hidden">
         <StatChip label="UTC" value={clock} />
         <div className="h-4 w-px bg-terminal-border" />
-        <MetalChip label="XAU" price={gold.price}   change={gold.change}   color="#f5c842" />
-        <MetalChip label="XAG" price={silver.price} change={silver.change} color="#a8b8c8" />
+        <MetalChip label="XAU" price={metals.gold.price}     change={metals.gold.change}     color="#f5c842" />
+        <MetalChip label="XAG" price={metals.silver.price}   change={metals.silver.change}   color="#a8b8c8" />
+        <MetalChip label="XPT" price={metals.platinum.price} change={metals.platinum.change} color="#e2e8f0" />
+        <MetalChip label="WTI" price={metals.wti.price}      change={metals.wti.change}      color="#fb923c" />
       </div>
 
       {/* Action buttons */}
