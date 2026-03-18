@@ -13,7 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.models.alert import AlertFiring, AlertWatch
 
-router = APIRouter()
+from app.core.security import get_current_user
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
 # ─── Schemas ──────────────────────────────────────────────────────────────

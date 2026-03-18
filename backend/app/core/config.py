@@ -1,10 +1,12 @@
 from functools import lru_cache
 from typing import Literal
+
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", env_file_encoding="utf-8")
 
     # ── App ────────────────────────────────────────────────────────────────
     environment: Literal["development", "production", "test"] = "development"
@@ -12,6 +14,10 @@ class Settings(BaseSettings):
 
     # ── Database ───────────────────────────────────────────────────────────
     database_url: str = "postgresql+asyncpg://worldstate:worldstate_secret@localhost:5432/worldstate"
+
+    # ── Auth (JWT) ─────────────────────────────────────────────────────────
+    jwt_secret_key: str = ""         # required in production; set in .env
+    jwt_expire_minutes: int = 1440   # 24 h
 
     # ── Redis ──────────────────────────────────────────────────────────────
     redis_url: str = "redis://localhost:6379/0"
@@ -49,6 +55,19 @@ class Settings(BaseSettings):
     # ── Drift / Expiry ─────────────────────────────────────────────────────
     cluster_soft_expire_hours: int = 6          # low-signal clusters
     cluster_hard_expire_hours: int = 24         # all clusters
+
+    @model_validator(mode="after")
+    def _validate_required_secrets(self) -> "Settings":
+        if self.environment == "test":
+            return self
+        if not self.openai_api_key:
+            raise ValueError("OPENAI_API_KEY is not set")
+        if not self.jwt_secret_key:
+            raise ValueError(
+                "JWT_SECRET_KEY is not set. "
+                "Generate one with: openssl rand -hex 32"
+            )
+        return self
 
 
 @lru_cache

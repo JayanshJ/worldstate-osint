@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.database import AsyncSessionLocal
+from app.core.database import get_db
 from app.intelligence.splc_extractor import (
     enrich_supply_chain_live,
     extract_supply_chain,
@@ -24,15 +24,10 @@ from app.intelligence.splc_extractor import (
 )
 from app.models.supply_chain import SCCompany, SCEdge
 
-router = APIRouter()
+from app.core.security import get_current_user
+router = APIRouter(dependencies=[Depends(get_current_user)])
 logger = logging.getLogger(__name__)
 
-
-# ─── DB dependency ────────────────────────────────────────────────────────
-
-async def get_db():
-    async with AsyncSessionLocal() as session:
-        yield session
 
 
 # ─── Serialisers ─────────────────────────────────────────────────────────

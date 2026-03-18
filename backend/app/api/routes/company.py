@@ -12,7 +12,8 @@ from fastapi import APIRouter, HTTPException
 from app.core.redis_client import get_redis
 from app.intelligence.company_extractor import get_company_profile
 
-router = APIRouter()
+from app.core.security import get_current_user
+router = APIRouter(dependencies=[Depends(get_current_user)])
 logger = logging.getLogger(__name__)
 
 

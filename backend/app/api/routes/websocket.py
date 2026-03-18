@@ -15,6 +15,7 @@ import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
 from app.core.config import get_settings
+from app.core.security import decode_token
 from app.core.redis_client import (
     CHANNEL_BREAKING,
     CHANNEL_CLUSTER_UPDATE,
@@ -105,7 +106,16 @@ async def start_redis_listener():
 
 
 @router.websocket("/ws")
-async def websocket_endpoint(ws: WebSocket):
+async def websocket_endpoint(ws: WebSocket, token: str | None = None):
+    # Validate JWT before accepting the connection
+    if not token:
+        await ws.close(code=1008)
+        return
+    try:
+        decode_token(token)
+    except Exception:
+        await ws.close(code=1008)
+        return
     await manager.connect(ws)
     try:
         # Send connection ack with current client count

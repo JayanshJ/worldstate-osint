@@ -32,7 +32,11 @@ const WsContext = createContext<WsContextValue>({
   clientCount:        0,
 })
 
-const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`
+function getWsUrl() {
+  const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
+  const token = localStorage.getItem('ws_token') ?? ''
+  return `${proto}://${window.location.host}/ws?token=${encodeURIComponent(token)}`
+}
 const RECONNECT_DELAY_MS = 3000
 const MAX_RECONNECT_DELAY = 30_000
 
@@ -54,7 +58,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     if (wsRef.current?.readyState === WebSocket.OPEN) return
 
     setStatus('connecting')
-    const ws = new WebSocket(WS_URL)
+    const ws = new WebSocket(getWsUrl())
     wsRef.current = ws
 
     ws.onopen = () => {

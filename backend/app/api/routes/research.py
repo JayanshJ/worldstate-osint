@@ -5,7 +5,8 @@ from fastapi import APIRouter, HTTPException, Query
 
 from app.intelligence.researcher import research_entity
 
-router = APIRouter()
+from app.core.security import get_current_user
+router = APIRouter(dependencies=[Depends(get_current_user)])
 logger = logging.getLogger(__name__)
 
 @router.get("/entity")

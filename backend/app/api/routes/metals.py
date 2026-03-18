@@ -5,7 +5,8 @@ import httpx
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-router = APIRouter()
+from app.core.security import get_current_user
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; WorldState/1.0)"}
 

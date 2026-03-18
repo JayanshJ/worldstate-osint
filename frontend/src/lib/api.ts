@@ -1,13 +1,20 @@
 import type { EventCluster, MarketStrategy, RawArticle } from '@/types'
 
 const BASE = '/api/v1'
+const TOKEN_KEY = 'ws_token'
+
+function authHeaders(): Record<string, string> {
+  const token = localStorage.getItem(TOKEN_KEY)
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
 
 async function req<T>(path: string, params?: Record<string, string | number | boolean>): Promise<T> {
   const url = new URL(path, window.location.origin)
   if (params) {
     Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)))
   }
-  const res = await fetch(url.toString())
+  const res = await fetch(url.toString(), { headers: authHeaders() })
+  if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.href = '/' }
   if (!res.ok) throw new Error(`API ${res.status}: ${path}`)
   return res.json()
 }
@@ -15,21 +22,24 @@ async function req<T>(path: string, params?: Record<string, string | number | bo
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(path, {
     method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body:    JSON.stringify(body),
   })
+  if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.href = '/' }
   if (!res.ok) throw new Error(`API ${res.status}: ${path}`)
   return res.json()
 }
 
 async function patchReq<T>(path: string): Promise<T> {
-  const res = await fetch(path, { method: 'PATCH' })
+  const res = await fetch(path, { method: 'PATCH', headers: authHeaders() })
+  if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.href = '/' }
   if (!res.ok) throw new Error(`API ${res.status}: ${path}`)
   return res.json()
 }
 
 async function del(path: string): Promise<void> {
-  const res = await fetch(path, { method: 'DELETE' })
+  const res = await fetch(path, { method: 'DELETE', headers: authHeaders() })
+  if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.href = '/' }
   if (!res.ok) throw new Error(`API ${res.status}: ${path}`)
 }
 

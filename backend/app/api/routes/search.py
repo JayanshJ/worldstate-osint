@@ -21,7 +21,8 @@ from app.core.database import get_db
 from app.models.article import ArticleEmbedding, ClusterMember, EventCluster, RawArticle
 from app.vectorization.embedder import embed_text
 
-router = APIRouter()
+from app.core.security import get_current_user
+router = APIRouter(dependencies=[Depends(get_current_user)])
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
