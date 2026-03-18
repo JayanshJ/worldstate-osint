@@ -23,28 +23,27 @@ def upgrade() -> None:
     op.execute('CREATE EXTENSION IF NOT EXISTS pg_trgm')
 
     # ── raw_articles ──────────────────────────────────────────────────────
-    op.create_table(
-        "raw_articles",
-        sa.Column("id",               postgresql.UUID(as_uuid=True), primary_key=True,
-                  server_default=sa.text("uuid_generate_v4()")),
-        sa.Column("source_id",        sa.Text(), nullable=False),
-        sa.Column("source_type",      sa.Text(), nullable=False),
-        sa.Column("url",              sa.Text(), unique=True),
-        sa.Column("title",            sa.Text(), nullable=False),
-        sa.Column("body",             sa.Text()),
-        sa.Column("published_at",     sa.TIMESTAMP(timezone=True)),
-        sa.Column("ingested_at",      sa.TIMESTAMP(timezone=True), server_default=sa.text("NOW()")),
-        sa.Column("raw_json",         postgresql.JSONB()),
-        sa.Column("content_hash",     sa.Text(), unique=True, nullable=False),
-        sa.Column("credibility_score", sa.Float(), server_default="0.5"),
-        sa.Column("is_processed",     sa.Boolean(), server_default="false"),
-    )
-    op.create_index("idx_raw_articles_processed", "raw_articles", ["is_processed"],
-                    postgresql_where=sa.text("is_processed = FALSE"))
-    op.create_index("idx_raw_articles_ingested", "raw_articles", [sa.text("ingested_at DESC")])
-    op.create_index("idx_raw_articles_hash", "raw_articles", ["content_hash"])
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS raw_articles (
+            id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            source_id        TEXT NOT NULL,
+            source_type      TEXT NOT NULL,
+            url              TEXT UNIQUE,
+            title            TEXT NOT NULL,
+            body             TEXT,
+            published_at     TIMESTAMPTZ,
+            ingested_at      TIMESTAMPTZ DEFAULT NOW(),
+            raw_json         JSONB,
+            content_hash     TEXT NOT NULL UNIQUE,
+            credibility_score FLOAT DEFAULT 0.5,
+            is_processed     BOOLEAN DEFAULT FALSE
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS idx_raw_articles_processed ON raw_articles(is_processed) WHERE is_processed = FALSE")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_raw_articles_ingested  ON raw_articles(ingested_at DESC)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_raw_articles_hash      ON raw_articles(content_hash)")
 
-    # ── article_embeddings (vector column via raw DDL) ────────────────────
+    # ── article_embeddings ────────────────────────────────────────────────
     op.execute("""
         CREATE TABLE IF NOT EXISTS article_embeddings (
             id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -60,7 +59,7 @@ def upgrade() -> None:
             WITH (m = 16, ef_construction = 64)
     """)
 
-    # ── event_clusters (vector column via raw DDL) ────────────────────────
+    # ── event_clusters ────────────────────────────────────────────────────
     op.execute("""
         CREATE TABLE IF NOT EXISTS event_clusters (
             id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -79,7 +78,7 @@ def upgrade() -> None:
             hdbscan_label   INT
         )
     """)
-    op.execute("CREATE INDEX IF NOT EXISTS idx_clusters_active ON event_clusters(is_active) WHERE is_active = TRUE")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_clusters_active  ON event_clusters(is_active) WHERE is_active = TRUE")
     op.execute("CREATE INDEX IF NOT EXISTS idx_clusters_updated ON event_clusters(last_updated_at DESC)")
     op.execute("""
         CREATE INDEX IF NOT EXISTS idx_clusters_centroid
@@ -88,128 +87,122 @@ def upgrade() -> None:
     """)
 
     # ── cluster_members ───────────────────────────────────────────────────
-    op.create_table(
-        "cluster_members",
-        sa.Column("id",         postgresql.UUID(as_uuid=True), primary_key=True,
-                  server_default=sa.text("uuid_generate_v4()")),
-        sa.Column("cluster_id", postgresql.UUID(as_uuid=True),
-                  sa.ForeignKey("event_clusters.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("article_id", postgresql.UUID(as_uuid=True),
-                  sa.ForeignKey("raw_articles.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("distance",   sa.Float()),
-        sa.Column("added_at",   sa.TIMESTAMP(timezone=True), server_default=sa.text("NOW()")),
-        sa.UniqueConstraint("cluster_id", "article_id"),
-    )
-    op.create_index("idx_members_cluster", "cluster_members", ["cluster_id"])
-    op.create_index("idx_members_article", "cluster_members", ["article_id"])
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS cluster_members (
+            id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            cluster_id UUID NOT NULL REFERENCES event_clusters(id) ON DELETE CASCADE,
+            article_id UUID NOT NULL REFERENCES raw_articles(id)   ON DELETE CASCADE,
+            distance   FLOAT,
+            added_at   TIMESTAMPTZ DEFAULT NOW(),
+            UNIQUE (cluster_id, article_id)
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS idx_members_cluster ON cluster_members(cluster_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_members_article ON cluster_members(article_id)")
 
     # ── alert_watches ─────────────────────────────────────────────────────
-    op.create_table(
-        "alert_watches",
-        sa.Column("id",             postgresql.UUID(as_uuid=True), primary_key=True,
-                  server_default=sa.text("uuid_generate_v4()")),
-        sa.Column("name",           sa.String(200), nullable=False),
-        sa.Column("keywords",       postgresql.JSONB()),
-        sa.Column("entities",       postgresql.JSONB()),
-        sa.Column("source_ids",     postgresql.JSONB()),
-        sa.Column("min_volatility", sa.Float(), server_default="0.0"),
-        sa.Column("min_sources",    sa.Integer(), server_default="1"),
-        sa.Column("is_active",      sa.Boolean(), server_default="true"),
-        sa.Column("created_at",     sa.TIMESTAMP(timezone=True), server_default=sa.text("NOW()")),
-        sa.Column("last_fired_at",  sa.TIMESTAMP(timezone=True)),
-        sa.Column("fire_count",     sa.Integer(), server_default="0"),
-        sa.Column("channel",        sa.String(50), server_default="'websocket'"),
-    )
-    op.create_index("idx_watches_active", "alert_watches", ["is_active"],
-                    postgresql_where=sa.text("is_active = TRUE"))
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS alert_watches (
+            id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            name           VARCHAR(200) NOT NULL,
+            keywords       JSONB,
+            entities       JSONB,
+            source_ids     JSONB,
+            min_volatility FLOAT DEFAULT 0.0,
+            min_sources    INT DEFAULT 1,
+            is_active      BOOLEAN DEFAULT TRUE,
+            created_at     TIMESTAMPTZ DEFAULT NOW(),
+            last_fired_at  TIMESTAMPTZ,
+            fire_count     INT DEFAULT 0,
+            channel        VARCHAR(50) DEFAULT 'websocket'
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS idx_watches_active ON alert_watches(is_active) WHERE is_active = TRUE")
 
     # ── alert_firings ─────────────────────────────────────────────────────
-    op.create_table(
-        "alert_firings",
-        sa.Column("id",         postgresql.UUID(as_uuid=True), primary_key=True,
-                  server_default=sa.text("uuid_generate_v4()")),
-        sa.Column("watch_id",   postgresql.UUID(as_uuid=True),
-                  sa.ForeignKey("alert_watches.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("cluster_id", postgresql.UUID(as_uuid=True),
-                  sa.ForeignKey("event_clusters.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("fired_at",   sa.TIMESTAMP(timezone=True), server_default=sa.text("NOW()")),
-        sa.Column("payload",    postgresql.JSONB()),
-    )
-    op.create_index("idx_firings_watch",   "alert_firings", ["watch_id"])
-    op.create_index("idx_firings_cluster", "alert_firings", ["cluster_id"])
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS alert_firings (
+            id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            watch_id   UUID NOT NULL REFERENCES alert_watches(id)  ON DELETE CASCADE,
+            cluster_id UUID NOT NULL REFERENCES event_clusters(id) ON DELETE CASCADE,
+            fired_at   TIMESTAMPTZ DEFAULT NOW(),
+            payload    JSONB
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS idx_firings_watch   ON alert_firings(watch_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_firings_cluster ON alert_firings(cluster_id)")
 
     # ── market_strategies ─────────────────────────────────────────────────
-    op.create_table(
-        "market_strategies",
-        sa.Column("id",           postgresql.UUID(as_uuid=True), primary_key=True,
-                  server_default=sa.text("uuid_generate_v4()")),
-        sa.Column("title",        sa.Text(), nullable=False),
-        sa.Column("thesis",       sa.Text()),
-        sa.Column("asset_class",  sa.String(50)),
-        sa.Column("direction",    sa.String(10)),
-        sa.Column("instruments",  postgresql.JSONB()),
-        sa.Column("risk_level",   sa.String(20)),
-        sa.Column("time_horizon", sa.String(50)),
-        sa.Column("catalysts",    postgresql.JSONB()),
-        sa.Column("risks",        postgresql.JSONB()),
-        sa.Column("is_active",    sa.Boolean(), server_default="true"),
-        sa.Column("generated_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("NOW()")),
-    )
-    op.create_index("idx_strategies_active", "market_strategies", ["is_active"])
-    op.create_index("idx_strategies_generated", "market_strategies", [sa.text("generated_at DESC")])
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS market_strategies (
+            id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            title        TEXT NOT NULL,
+            thesis       TEXT,
+            asset_class  VARCHAR(50),
+            direction    VARCHAR(10),
+            instruments  JSONB,
+            risk_level   VARCHAR(20),
+            time_horizon VARCHAR(50),
+            catalysts    JSONB,
+            risks        JSONB,
+            is_active    BOOLEAN DEFAULT TRUE,
+            generated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS idx_strategies_active    ON market_strategies(is_active)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_strategies_generated ON market_strategies(generated_at DESC)")
 
     # ── sc_companies ──────────────────────────────────────────────────────
-    op.create_table(
-        "sc_companies",
-        sa.Column("id",               postgresql.UUID(as_uuid=True), primary_key=True,
-                  server_default=sa.text("uuid_generate_v4()")),
-        sa.Column("ticker",           sa.String(20), unique=True, nullable=False),
-        sa.Column("cik",              sa.String(20)),
-        sa.Column("legal_name",       sa.Text(), nullable=False),
-        sa.Column("hq_country",       sa.String(3)),
-        sa.Column("sector",           sa.String(200)),
-        sa.Column("sic_code",         sa.String(10)),
-        sa.Column("last_filing_date", sa.Date()),
-        sa.Column("created_at",       sa.Date()),
-        sa.Column("updated_at",       sa.Date()),
-    )
-    op.create_index("idx_sc_companies_ticker", "sc_companies", ["ticker"])
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS sc_companies (
+            id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            ticker           VARCHAR(20) UNIQUE NOT NULL,
+            cik              VARCHAR(20),
+            legal_name       TEXT NOT NULL,
+            hq_country       VARCHAR(3),
+            sector           VARCHAR(200),
+            sic_code         VARCHAR(10),
+            last_filing_date DATE,
+            created_at       DATE,
+            updated_at       DATE
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS idx_sc_companies_ticker ON sc_companies(ticker)")
 
     # ── sc_edges ──────────────────────────────────────────────────────────
-    op.create_table(
-        "sc_edges",
-        sa.Column("id",                postgresql.UUID(as_uuid=True), primary_key=True,
-                  server_default=sa.text("uuid_generate_v4()")),
-        sa.Column("focal_id",          postgresql.UUID(as_uuid=True),
-                  sa.ForeignKey("sc_companies.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("entity_name",       sa.Text(), nullable=False),
-        sa.Column("entity_ticker",     sa.String(20)),
-        sa.Column("direction",         sa.String(20), nullable=False),
-        sa.Column("relationship_type", sa.String(50)),
-        sa.Column("tier",              sa.SmallInteger(), server_default="1"),
-        sa.Column("pct_revenue",       sa.Numeric(6, 2)),
-        sa.Column("pct_cogs",          sa.Numeric(6, 2)),
-        sa.Column("sole_source",       sa.Boolean(), server_default="false"),
-        sa.Column("disclosure_type",   sa.String(20), server_default="'DISCLOSED'"),
-        sa.Column("confidence",        sa.Numeric(3, 2), server_default="1.0"),
-        sa.Column("evidence",          sa.Text()),
-        sa.Column("hq_country",        sa.String(3)),
-        sa.Column("as_of_date",        sa.Date(), nullable=False),
-        sa.Column("created_at",        sa.Date()),
-    )
-    op.create_index("idx_sc_edges_focal", "sc_edges", ["focal_id"])
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS sc_edges (
+            id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            focal_id          UUID NOT NULL REFERENCES sc_companies(id) ON DELETE CASCADE,
+            entity_name       TEXT NOT NULL,
+            entity_ticker     VARCHAR(20),
+            direction         VARCHAR(20) NOT NULL,
+            relationship_type VARCHAR(50),
+            tier              SMALLINT DEFAULT 1,
+            pct_revenue       NUMERIC(6,2),
+            pct_cogs          NUMERIC(6,2),
+            sole_source       BOOLEAN DEFAULT FALSE,
+            disclosure_type   VARCHAR(20) DEFAULT 'DISCLOSED',
+            confidence        NUMERIC(3,2) DEFAULT 1.0,
+            evidence          TEXT,
+            hq_country        VARCHAR(3),
+            as_of_date        DATE NOT NULL,
+            created_at        DATE
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS idx_sc_edges_focal ON sc_edges(focal_id)")
 
     # ── users ─────────────────────────────────────────────────────────────
-    op.create_table(
-        "users",
-        sa.Column("id",              postgresql.UUID(as_uuid=True), primary_key=True,
-                  server_default=sa.text("uuid_generate_v4()")),
-        sa.Column("email",           sa.String(255), unique=True, nullable=False),
-        sa.Column("hashed_password", sa.String(255), nullable=False),
-        sa.Column("is_admin",        sa.Boolean(), server_default="false"),
-        sa.Column("created_at",      sa.TIMESTAMP(timezone=True), server_default=sa.text("NOW()")),
-    )
-    op.create_index("idx_users_email", "users", ["email"])
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            email           VARCHAR(255) UNIQUE NOT NULL,
+            hashed_password VARCHAR(255) NOT NULL,
+            is_admin        BOOLEAN DEFAULT FALSE,
+            created_at      TIMESTAMPTZ DEFAULT NOW()
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
 
     # ── expire_old_clusters function ──────────────────────────────────────
     op.execute("""
@@ -233,13 +226,13 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute("DROP FUNCTION IF EXISTS expire_old_clusters()")
-    op.drop_table("users")
-    op.drop_table("sc_edges")
-    op.drop_table("sc_companies")
-    op.drop_table("market_strategies")
-    op.drop_table("alert_firings")
-    op.drop_table("alert_watches")
-    op.drop_table("cluster_members")
+    op.execute("DROP TABLE IF EXISTS users")
+    op.execute("DROP TABLE IF EXISTS sc_edges")
+    op.execute("DROP TABLE IF EXISTS sc_companies")
+    op.execute("DROP TABLE IF EXISTS market_strategies")
+    op.execute("DROP TABLE IF EXISTS alert_firings")
+    op.execute("DROP TABLE IF EXISTS alert_watches")
+    op.execute("DROP TABLE IF EXISTS cluster_members")
     op.execute("DROP TABLE IF EXISTS event_clusters")
     op.execute("DROP TABLE IF EXISTS article_embeddings")
-    op.drop_table("raw_articles")
+    op.execute("DROP TABLE IF EXISTS raw_articles")

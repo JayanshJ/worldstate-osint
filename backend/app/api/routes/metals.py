@@ -2,7 +2,7 @@ import asyncio
 import time
 from datetime import datetime, timezone
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
 from app.core.security import get_current_user

@@ -7,7 +7,7 @@ POST /api/v1/company/{ticker}/refresh  — force-refresh (bust cache, re-fetch)
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.redis_client import get_redis
 from app.intelligence.company_extractor import get_company_profile
