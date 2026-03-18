@@ -154,45 +154,75 @@ export function SCGraph({ ticker, legalName, edges, onNodeClick, onHubClick, onF
 
     let angleAccum = -Math.PI / 2  // start at 12 o'clock
 
-    const clusters: Cluster[] = activeCats.map((cat, i) => {
+    // Phase 1: compute per-cluster metadata (angle, dimensions, initial outDist)
+    const meta = activeCats.map((cat, i) => {
       const sectorSpan = (weights[i] / totalW) * 2 * Math.PI
       const midAngle   = angleAccum + sectorSpan / 2
       angleAccum      += sectorSpan
 
-      const color = DIR[cat.dir] ?? DIR.COMPETITOR
-
-      // Hub dot position
-      const hubX = cx + HUB_R * Math.cos(midAngle)
-      const hubY = cy + HUB_R * Math.sin(midAngle)
-
-      // Grid dimensions
       const n     = cat.nodes.length
       const cols  = Math.min(COLS, n)
       const rows  = Math.ceil(n / cols)
       const gridW = cols * CHIP_W + (cols - 1) * GAP_X
       const gridH = LABEL_H + rows * CHIP_H + (rows - 1) * GAP_Y
 
-      // Grid centre: pushed further out from focal past hub
-      const outDist  = HUB_R + GRID_EXTRA + gridH / 2
-      const gridCX   = cx + Math.cos(midAngle) * outDist
-      const gridCY   = cy + Math.sin(midAngle) * outDist
-      const gridX    = gridCX - gridW / 2
-      const gridY    = gridCY - gridH / 2
+      return {
+        cat, i,
+        angle:    midAngle,
+        gridW,    gridH,
+        outDist:  HUB_R + GRID_EXTRA + gridH / 2,
+        color:    DIR[cat.dir] ?? DIR.COMPETITOR,
+      }
+    })
 
-      // Chip positions within grid
-      const chips: ChipNode[] = cat.nodes.map((node, j) => {
-        const col = j % cols
-        const row = Math.floor(j / cols)
-        return {
-          ...node,
-          _x: gridX + col * (CHIP_W + GAP_X),
-          _y: gridY + LABEL_H + row * (CHIP_H + GAP_Y),
+    // Phase 2: iterative collision resolution — push overlapping clusters outward
+    const MARGIN = 14
+    function gridRect(m: typeof meta[0]) {
+      const gcx = cx + Math.cos(m.angle) * m.outDist
+      const gcy = cy + Math.sin(m.angle) * m.outDist
+      return { x: gcx - m.gridW / 2, y: gcy - m.gridH / 2, w: m.gridW, h: m.gridH }
+    }
+    function overlaps(a: typeof meta[0], b: typeof meta[0]) {
+      const ra = gridRect(a), rb = gridRect(b)
+      return ra.x - MARGIN < rb.x + rb.w && ra.x + ra.w + MARGIN > rb.x &&
+             ra.y - MARGIN < rb.y + rb.h && ra.y + ra.h + MARGIN > rb.y
+    }
+
+    for (let iter = 0; iter < 30; iter++) {
+      let moved = false
+      for (let i = 0; i < meta.length; i++) {
+        for (let j = i + 1; j < meta.length; j++) {
+          if (overlaps(meta[i], meta[j])) {
+            meta[i].outDist += 12
+            meta[j].outDist += 12
+            moved = true
+          }
         }
-      })
+      }
+      if (!moved) break
+    }
+
+    // Phase 3: build final Cluster objects from resolved positions
+    const clusters: Cluster[] = meta.map(m => {
+      const { cat, angle, gridW, gridH, outDist, color } = m
+      const hubX  = cx + HUB_R * Math.cos(angle)
+      const hubY  = cy + HUB_R * Math.sin(angle)
+      const gridCX = cx + Math.cos(angle) * outDist
+      const gridCY = cy + Math.sin(angle) * outDist
+      const gridX  = gridCX - gridW / 2
+      const gridY  = gridCY - gridH / 2
+
+      const n    = cat.nodes.length
+      const cols = Math.min(COLS, n)
+      const chips: ChipNode[] = cat.nodes.map((node, j) => ({
+        ...node,
+        _x: gridX + (j % cols) * (CHIP_W + GAP_X),
+        _y: gridY + LABEL_H + Math.floor(j / cols) * (CHIP_H + GAP_Y),
+      }))
 
       return {
         dir: cat.dir, label: cat.label, color,
-        hubX, hubY, angle: midAngle,
+        hubX, hubY, angle,
         gridX, gridY, gridW, gridH,
         chips, total: n,
       }
