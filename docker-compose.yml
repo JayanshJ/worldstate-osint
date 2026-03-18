@@ -4,9 +4,9 @@ services:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-worldstate}
+      POSTGRES_USER:     ${POSTGRES_USER:-worldstate}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-worldstate_secret}
-      POSTGRES_DB: ${POSTGRES_DB:-worldstate}
+      POSTGRES_DB:       ${POSTGRES_DB:-worldstate}
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./infra/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -18,17 +18,20 @@ services:
       timeout: 5s
       retries: 5
 
-  # ─── Redis (queue + pub/sub for WebSocket fan-out) ────────────────────────
+  # ─── Redis ────────────────────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --requirepass ${REDIS_PASSWORD:-redis_secret}
     volumes:
       - redisdata:/data
-    ports:
-      - "6379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_secret}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -40,15 +43,13 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-worldstate}:${POSTGRES_PASSWORD:-worldstate_secret}@postgres:5432/${POSTGRES_DB:-worldstate}
-      REDIS_URL: redis://redis:6379/0
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
-      FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
-      ENVIRONMENT: ${ENVIRONMENT:-development}
-    ports:
-      - "8000:8000"
+      DATABASE_URL:  postgresql+asyncpg://${POSTGRES_USER:-worldstate}:${POSTGRES_PASSWORD:-worldstate_secret}@postgres:5432/${POSTGRES_DB:-worldstate}
+      REDIS_URL:     redis://:${REDIS_PASSWORD:-redis_secret}@redis:6379/0
+      OPENAI_API_KEY:   ${OPENAI_API_KEY}
+      GOOGLE_API_KEY:   ${GOOGLE_API_KEY:-}
+      FINNHUB_API_KEY:  ${FINNHUB_API_KEY:-}
+      JWT_SECRET_KEY:   ${JWT_SECRET_KEY}
+      ENVIRONMENT:      ${ENVIRONMENT:-production}
     depends_on:
       postgres:
         condition: service_healthy
@@ -59,35 +60,32 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
-    volumes:
-      - ./backend:/app
+      start_period: 45s
     command: >
       sh -c "alembic upgrade head &&
-             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4"
 
-  # ─── Ingestion Worker (RSS + Playwright) ─────────────────────────────────
+  # ─── Ingestion Worker ─────────────────────────────────────────────────────
   ingestion_worker:
     build:
       context: ./backend
       dockerfile: Dockerfile.worker
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-worldstate}:${POSTGRES_PASSWORD:-worldstate_secret}@postgres:5432/${POSTGRES_DB:-worldstate}
-      REDIS_URL: redis://redis:6379/0
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      DATABASE_URL:         postgresql+asyncpg://${POSTGRES_USER:-worldstate}:${POSTGRES_PASSWORD:-worldstate_secret}@postgres:5432/${POSTGRES_DB:-worldstate}
+      REDIS_URL:            redis://:${REDIS_PASSWORD:-redis_secret}@redis:6379/0
+      OPENAI_API_KEY:       ${OPENAI_API_KEY}
       TWITTER_BEARER_TOKEN: ${TWITTER_BEARER_TOKEN:-}
-      REDDIT_CLIENT_ID: ${REDDIT_CLIENT_ID:-}
+      REDDIT_CLIENT_ID:     ${REDDIT_CLIENT_ID:-}
       REDDIT_CLIENT_SECRET: ${REDDIT_CLIENT_SECRET:-}
-      REDDIT_USER_AGENT: ${REDDIT_USER_AGENT:-WorldState/1.0}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      REDDIT_USER_AGENT:    ${REDDIT_USER_AGENT:-WorldState/1.0}
+      JWT_SECRET_KEY:       ${JWT_SECRET_KEY}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     volumes:
-      - ./backend:/app
       - playwright_cache:/root/.cache/ms-playwright
     command: python -m workers.ingestion_runner
 
@@ -98,61 +96,56 @@ services:
       dockerfile: Dockerfile.worker
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-worldstate}:${POSTGRES_PASSWORD:-worldstate_secret}@postgres:5432/${POSTGRES_DB:-worldstate}
-      REDIS_URL: redis://redis:6379/0
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      DATABASE_URL:    postgresql+asyncpg://${POSTGRES_USER:-worldstate}:${POSTGRES_PASSWORD:-worldstate_secret}@postgres:5432/${POSTGRES_DB:-worldstate}
+      REDIS_URL:       redis://:${REDIS_PASSWORD:-redis_secret}@redis:6379/0
+      OPENAI_API_KEY:  ${OPENAI_API_KEY}
+      GOOGLE_API_KEY:  ${GOOGLE_API_KEY:-}
+      JWT_SECRET_KEY:  ${JWT_SECRET_KEY}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ./backend:/app
     command: python -m workers.cluster_runner
 
-  # ─── React Frontend ──────────────────────────────────────────────────────
+  # ─── Frontend (nginx serving React build) ────────────────────────────────
   frontend:
-    image: node:22-alpine
-    working_dir: /app
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
     restart: unless-stopped
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
     ports:
-      - "3000:3000"
-    environment:
-      VITE_API_BASE: http://api:8000
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+      - "80:80"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
-  # ─── DB Backup (runs daily at 02:00 UTC via cron) ─────────────────────────
+  # ─── DB Backup (daily pg_dump) ────────────────────────────────────────────
   backup:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-worldstate}
+      POSTGRES_USER:     ${POSTGRES_USER:-worldstate}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-worldstate_secret}
-      POSTGRES_DB: ${POSTGRES_DB:-worldstate}
-      POSTGRES_HOST: postgres
-      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-}
-      BACKUP_DIR: /backups
-      RETENTION_DAYS: "7"
+      POSTGRES_DB:       ${POSTGRES_DB:-worldstate}
+      POSTGRES_HOST:     postgres
+      BACKUP_S3_BUCKET:  ${BACKUP_S3_BUCKET:-}
+      BACKUP_DIR:        /backups
+      RETENTION_DAYS:    "7"
     volumes:
       - ./backend/scripts/backup.sh:/backup.sh:ro
       - backups:/backups
     depends_on:
       postgres:
         condition: service_healthy
-    # Run once at startup then every 24 h via sleep loop
     command: >
-      sh -c "chmod +x /backup.sh &&
-             while true; do
-               /backup.sh;
-               sleep 86400;
-             done"
+      sh -c "chmod +x /backup.sh && while true; do /backup.sh; sleep 86400; done"
 
 volumes:
   pgdata:

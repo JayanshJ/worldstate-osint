@@ -23,9 +23,9 @@ Once running:
 
 | | URL |
 |---|---|
-| **Dashboard** | http://localhost:3000 |
-| **API Explorer** | http://localhost:8000/docs |
-| **Health Check** | http://localhost:8000/health |
+| **Dashboard** | http://localhost |
+| **API Explorer** | http://localhost/docs |
+| **Health Check** | http://localhost/health |
 
 ---
 
@@ -92,20 +92,20 @@ Every API endpoint requires a JWT bearer token. Each user belongs to an **Organi
 
 ```bash
 # Register (auto-creates a personal org)
-curl -X POST http://localhost:8000/auth/register \
+curl -X POST http://localhost/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email": "you@example.com", "password": "yourpassword"}'
 
 # Login — returns access_token
-curl -X POST http://localhost:8000/auth/login \
+curl -X POST http://localhost/auth/login \
   -d "username=you@example.com&password=yourpassword"
 
 # Use the token
-curl http://localhost:8000/api/v1/clusters/ \
+curl http://localhost/api/v1/clusters/ \
   -H "Authorization: Bearer <access_token>"
 ```
 
-The frontend handles login/register automatically — visit http://localhost:3000.
+The frontend handles login/register automatically — visit http://localhost.
 
 ### GDPR
 - `DELETE /auth/me` — permanently erases your account, alerts, and organisation (if you were the last member)
@@ -229,7 +229,7 @@ RETENTION_DAYS=7
 | `api` | FastAPI — REST + WebSocket, JWT auth, rate limiting, audit middleware |
 | `ingestion_worker` | Polls 20+ sources every 2 min, deduplicates, embeds with OpenAI |
 | `cluster_worker` | HDBSCAN clustering every 60s, AI summarisation, strategy generation |
-| `frontend` | React 18 + Vite dashboard at localhost:3000 |
+| `frontend` | React 18 + Vite dashboard at localhost |
 | `backup` | Daily pg_dump with optional S3 upload and 7-day local retention |
 
 ---
@@ -356,8 +356,8 @@ Strategy signals and market commentary are produced by automated AI systems. The
 
 **WorldState is not a registered investment adviser. Nothing on this platform constitutes investment advice.**
 
-- Terms of Service: http://localhost:3000/terms
-- Privacy Policy: http://localhost:3000/privacy
+- Terms of Service: http://localhost/terms
+- Privacy Policy: http://localhost/privacy
 - Signal methodology: `GET /api/v1/strategies/methodology`
 
 ---

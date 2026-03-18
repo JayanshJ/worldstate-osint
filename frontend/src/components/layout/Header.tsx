@@ -63,12 +63,9 @@ const EMPTY_METALS: MetalsData = {
 }
 
 async function fetchMetals(): Promise<MetalsData> {
-  const res = await fetch('/api/v1/metals', {
-    headers: (() => {
-      const t = localStorage.getItem('ws_token')
-      return t ? { Authorization: `Bearer ${t}` } : {}
-    })(),
-  })
+  const t = localStorage.getItem('ws_token')
+  const headers: Record<string, string> = t ? { Authorization: `Bearer ${t}` } : {}
+  const res = await fetch('/api/v1/metals', { headers })
   if (!res.ok) return EMPTY_METALS
   return res.json()
 }

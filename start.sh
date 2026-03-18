@@ -42,11 +42,12 @@ if [[ ! -f "$ENV_FILE" ]]; then
   read -rp "  Reddit client secret   [enter to skip]: " REDDIT_CLIENT_SECRET
 
   JWT_SECRET_KEY=$(openssl rand -hex 32)
-  success "JWT secret auto-generated ✓"
+  REDIS_PASSWORD=$(openssl rand -hex 16)
+  success "Secrets auto-generated ✓"
 
   cat > "$ENV_FILE" <<EOF
 # App
-ENVIRONMENT=development
+ENVIRONMENT=production
 LOG_LEVEL=INFO
 
 # Auth — auto-generated, do not share
@@ -68,6 +69,9 @@ REDDIT_USER_AGENT=WorldState/1.0
 POSTGRES_USER=worldstate
 POSTGRES_PASSWORD=worldstate_secret
 POSTGRES_DB=worldstate
+
+# Redis — auto-generated password
+REDIS_PASSWORD=${REDIS_PASSWORD}
 EOF
 
   success ".env created ✓"
@@ -81,6 +85,11 @@ if [[ -z "${JWT_SECRET_KEY:-}" ]]; then
   JWT_SECRET_KEY=$(openssl rand -hex 32)
   echo "JWT_SECRET_KEY=${JWT_SECRET_KEY}" >> "$ENV_FILE"
   success "JWT_SECRET_KEY added to .env ✓"
+fi
+if [[ -z "${REDIS_PASSWORD:-}" ]]; then
+  REDIS_PASSWORD=$(openssl rand -hex 16)
+  echo "REDIS_PASSWORD=${REDIS_PASSWORD}" >> "$ENV_FILE"
+  success "REDIS_PASSWORD added to .env ✓"
 fi
 if [[ -z "${OPENAI_API_KEY:-}" ]]; then
   err "OPENAI_API_KEY is missing from .env. Add it and re-run."
@@ -98,10 +107,10 @@ trap cleanup INT TERM
 
 # ── Launch ─────────────────────────────────────────────────────────────────────
 info "Starting all services (Postgres · Redis · API · workers · frontend)..."
-info "First run takes ~3 min to build images. Subsequent starts take ~20s.\n"
-echo -e "  ${bold}Dashboard:${reset}  http://localhost:3000"
-echo -e "  ${bold}API docs:${reset}   http://localhost:8000/docs"
-echo -e "  ${bold}Health:${reset}     http://localhost:8000/health\n"
+info "First run takes ~5 min to build images. Subsequent starts take ~30s.\n"
+echo -e "  ${bold}Dashboard:${reset}  http://localhost"
+echo -e "  ${bold}API docs:${reset}   http://localhost/docs   (via nginx)"
+echo -e "  ${bold}Health:${reset}     http://localhost/health\n"
 echo -e "  Press ${bold}Ctrl+C${reset} to stop all services.\n"
 
 docker compose -f "$ROOT/docker-compose.yml" --env-file "$ENV_FILE" up --build "$@"
