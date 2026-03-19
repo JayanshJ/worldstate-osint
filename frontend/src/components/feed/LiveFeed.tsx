@@ -2,7 +2,8 @@ import { Radio } from 'lucide-react'
 import { useLiveFeed } from '@/hooks/useLiveFeed'
 import { CredibilityDot } from '@/components/ui/CredibilityDot'
 import { getSourceLabel } from '@/types'
-import { cn, timeAgo } from '@/lib/utils'
+import { cn, formatAbsTime } from '@/lib/utils'
+import { useTimezone } from '@/context/TimezoneContext'
 
 const SOURCE_TYPE_COLORS: Record<string, string> = {
   rss:       '#00d4ff',
@@ -14,6 +15,7 @@ const SOURCE_TYPE_COLORS: Record<string, string> = {
 
 export function LiveFeed() {
   const { articles, loading } = useLiveFeed()
+  const { timezone } = useTimezone()
 
   return (
     <div className="flex flex-col h-full">
@@ -67,7 +69,7 @@ export function LiveFeed() {
                   </span>
                   <CredibilityDot score={article.credibility_score} sourceId={article.source_id} />
                   <span className="text-[9px] text-terminal-dim font-mono ml-auto flex-shrink-0">
-                    {timeAgo(article.ingested_at)}
+                    {formatAbsTime(article.ingested_at, timezone)}
                   </span>
                 </div>
 

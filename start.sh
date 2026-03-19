@@ -69,7 +69,7 @@ REDDIT_USER_AGENT=WorldState/1.0
 POSTGRES_USER=worldstate
 POSTGRES_PASSWORD=worldstate_secret
 POSTGRES_DB=worldstate
-
+~
 # Redis — auto-generated password
 REDIS_PASSWORD=${REDIS_PASSWORD}
 EOF

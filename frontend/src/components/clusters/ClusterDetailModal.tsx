@@ -7,7 +7,8 @@ import { getVolatilityTier, VOLATILITY_COLORS, getSourceLabel } from '@/types'
 import { VolatilityBadge } from '@/components/ui/VolatilityBadge'
 import { EntityPills } from '@/components/ui/EntityPills'
 import { CredibilityDot } from '@/components/ui/CredibilityDot'
-import { cn, timeAgo, formatTime } from '@/lib/utils'
+import { cn, formatAbsTime, formatDateTime } from '@/lib/utils'
+import { useTimezone } from '@/context/TimezoneContext'
 
 interface Props {
   clusterId: string
@@ -17,6 +18,7 @@ interface Props {
 export function ClusterDetailModal({ clusterId, onClose }: Props) {
   const [cluster, setCluster] = useState<(EventCluster & { members: ClusterMemberDetail[] }) | null>(null)
   const [loading, setLoading] = useState(true)
+  const { timezone } = useTimezone()
 
   useEffect(() => {
     api.clusters.get(clusterId).then(data => {
@@ -83,7 +85,7 @@ export function ClusterDetailModal({ clusterId, onClose }: Props) {
                     {cluster.member_count} sources · weight {cluster.weighted_score.toFixed(2)}
                   </span>
                   <span className="text-[10px] font-mono text-terminal-dim">
-                    First seen {timeAgo(cluster.first_seen_at)}
+                    First seen {formatAbsTime(cluster.first_seen_at, timezone)}
                   </span>
                 </>
               )}
@@ -174,8 +176,8 @@ export function ClusterDetailModal({ clusterId, onClose }: Props) {
                 <div className="flex flex-wrap gap-x-6 gap-y-1">
                   {[
                     ['Cluster ID',  cluster.id.slice(0, 16) + '…'],
-                    ['First Seen',  formatTime(cluster.first_seen_at)],
-                    ['Last Update', formatTime(cluster.last_updated_at)],
+                    ['First Seen',  formatDateTime(cluster.first_seen_at, timezone)],
+                    ['Last Update', formatDateTime(cluster.last_updated_at, timezone)],
                     ['Sentiment',   (cluster.sentiment >= 0 ? '+' : '') + cluster.sentiment.toFixed(3)],
                     ['Status',      cluster.is_active ? 'ACTIVE' : 'EXPIRED'],
                   ].map(([k, v]) => (
@@ -201,6 +203,7 @@ function SourceTimelineEntry({
   isFirst: boolean
   color:   string
 }) {
+  const { timezone } = useTimezone()
   return (
     <div className="flex items-start gap-3 pl-1">
       {/* Timeline dot */}
@@ -232,7 +235,7 @@ function SourceTimelineEntry({
             </span>
           )}
           <span className="text-[9px] font-mono text-terminal-dim">
-            {timeAgo(member.published_at)}
+            {formatAbsTime(member.published_at, timezone)}
           </span>
         </div>
 

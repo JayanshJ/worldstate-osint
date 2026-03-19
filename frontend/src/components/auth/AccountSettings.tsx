@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
+import { useTimezone, TIMEZONE_GROUPS } from '@/context/TimezoneContext'
 import { api } from '@/lib/api'
 
 export function AccountSettings({ onClose }: { onClose: () => void }) {
   const { logout } = useAuth()
+  const { timezone, setTimezone } = useTimezone()
   const [confirming, setConfirming] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [deleting,   setDeleting]   = useState(false)
+  const [error,      setError]      = useState<string | null>(null)
 
   async function handleDelete() {
     setDeleting(true)
@@ -22,50 +24,74 @@ export function AccountSettings({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center font-mono">
-      <div className="bg-gray-950 border border-gray-800 rounded-lg p-8 w-full max-w-md">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-white font-bold">Account Settings</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-white">✕</button>
+      <div className="bg-[#0c0e18] border border-[#1e2235] w-full max-w-md shadow-2xl">
+        {/* Header */}
+        <div className="flex justify-between items-center px-5 py-3 border-b border-[#1e2235]">
+          <span className="text-[11px] tracking-[0.2em] text-terminal-accent font-bold uppercase">
+            Account Settings
+          </span>
+          <button onClick={onClose} className="text-[#4a5568] hover:text-white transition-colors text-sm">✕</button>
         </div>
 
-        <div className="space-y-4">
+        <div className="p-5 space-y-4">
+          {/* Timezone */}
+          <div className="border border-[#1e2235] p-4">
+            <p className="text-[9px] text-[#4a5568] uppercase tracking-[0.2em] mb-3">Display Timezone</p>
+            <select
+              value={timezone}
+              onChange={e => setTimezone(e.target.value)}
+              className="w-full bg-[#0f1117] border border-[#1e2235] text-terminal-text text-[11px] font-mono px-3 py-2 focus:outline-none focus:border-terminal-accent/40"
+            >
+              {TIMEZONE_GROUPS.map(group => (
+                <optgroup key={group.label} label={group.label}>
+                  {group.zones.map(z => (
+                    <option key={z.value} value={z.value}>{z.label}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            <p className="text-[9px] text-[#4a5568] mt-2">
+              All timestamps — news, clusters, charts — will display in this timezone.
+            </p>
+          </div>
+
           {/* Legal links */}
-          <div className="border border-gray-800 rounded p-4">
-            <p className="text-gray-400 text-xs mb-3 uppercase tracking-widest">Legal</p>
+          <div className="border border-[#1e2235] p-4">
+            <p className="text-[9px] text-[#4a5568] uppercase tracking-[0.2em] mb-3">Legal</p>
             <div className="flex gap-4">
-              <a href="/privacy" target="_blank" className="text-green-400 hover:text-green-300 text-sm">Privacy Policy</a>
-              <a href="/terms"   target="_blank" className="text-green-400 hover:text-green-300 text-sm">Terms of Service</a>
+              <a href="/privacy" target="_blank" className="text-terminal-accent hover:brightness-125 text-[11px] transition-all">Privacy Policy</a>
+              <a href="/terms"   target="_blank" className="text-terminal-accent hover:brightness-125 text-[11px] transition-all">Terms of Service</a>
             </div>
           </div>
 
           {/* GDPR delete */}
-          <div className="border border-red-900 rounded p-4">
-            <p className="text-red-400 text-xs mb-2 uppercase tracking-widest">Danger Zone</p>
-            <p className="text-gray-400 text-sm mb-4">
+          <div className="border border-red-900/60 p-4">
+            <p className="text-[9px] text-red-500 uppercase tracking-[0.2em] mb-2">Danger Zone</p>
+            <p className="text-[#4a5568] text-[11px] mb-4">
               Permanently delete your account and all associated data. This cannot be undone.
             </p>
             {!confirming ? (
               <button
                 onClick={() => setConfirming(true)}
-                className="px-4 py-2 bg-red-900/30 border border-red-800 text-red-400 rounded text-sm hover:bg-red-900/60 transition-colors"
+                className="px-4 py-1.5 bg-red-900/20 border border-red-800/60 text-red-500 text-[11px] hover:bg-red-900/40 transition-colors"
               >
                 Delete My Account
               </button>
             ) : (
               <div className="space-y-3">
-                <p className="text-yellow-400 text-sm font-bold">Are you absolutely sure?</p>
-                {error && <p className="text-red-400 text-sm">{error}</p>}
+                <p className="text-yellow-400 text-[11px] font-bold tracking-wide">Are you absolutely sure?</p>
+                {error && <p className="text-red-400 text-[11px]">{error}</p>}
                 <div className="flex gap-3">
                   <button
                     onClick={handleDelete}
                     disabled={deleting}
-                    className="px-4 py-2 bg-red-700 text-white rounded text-sm hover:bg-red-600 disabled:opacity-50 transition-colors"
+                    className="px-4 py-1.5 bg-red-700 text-white text-[11px] hover:bg-red-600 disabled:opacity-50 transition-colors"
                   >
                     {deleting ? 'Deleting…' : 'Yes, delete everything'}
                   </button>
                   <button
                     onClick={() => setConfirming(false)}
-                    className="px-4 py-2 bg-gray-800 text-gray-300 rounded text-sm hover:bg-gray-700 transition-colors"
+                    className="px-4 py-1.5 bg-[#1e2235] text-[#94a3b8] text-[11px] hover:bg-[#252840] transition-colors"
                   >
                     Cancel
                   </button>

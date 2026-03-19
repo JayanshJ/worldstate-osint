@@ -1,6 +1,7 @@
 import { Route, Router, Switch } from 'wouter'
 import { AuthProvider, useAuth } from '@/context/AuthContext'
 import { WebSocketProvider } from '@/context/WebSocketContext'
+import { TimezoneProvider } from '@/context/TimezoneContext'
 import { WarRoom } from '@/components/layout/WarRoom'
 import { LoginPage } from '@/components/auth/LoginPage'
 import { RegisterPage } from '@/components/auth/RegisterPage'
@@ -38,7 +39,9 @@ export default function App() {
   return (
     <Router>
       <AuthProvider>
-        <AuthGate />
+        <TimezoneProvider>
+          <AuthGate />
+        </TimezoneProvider>
       </AuthProvider>
     </Router>
   )

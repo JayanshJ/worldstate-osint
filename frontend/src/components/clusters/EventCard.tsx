@@ -7,7 +7,8 @@ import {
   VOLATILITY_BG,
   VOLATILITY_COLORS,
 } from '@/types'
-import { cn, formatSentiment as fmtSent, timeAgo, formatTime } from '@/lib/utils'
+import { cn, formatSentiment as fmtSent, formatAbsTime, formatDateTime } from '@/lib/utils'
+import { useTimezone } from '@/context/TimezoneContext'
 import { VolatilityBadge } from '@/components/ui/VolatilityBadge'
 import { EntityPills } from '@/components/ui/EntityPills'
 
@@ -26,6 +27,7 @@ interface Props {
 
 export function EventCard({ cluster, isNew, isUpdated, onSelect }: Props) {
   const [expanded, setExpanded] = useState(false)
+  const { timezone } = useTimezone()
 
   const tier   = getVolatilityTier(cluster.volatility)
   const color  = VOLATILITY_COLORS[tier]
@@ -95,7 +97,7 @@ export function EventCard({ cluster, isNew, isUpdated, onSelect }: Props) {
               </span>
 
               <span className="text-[10px] text-terminal-dim font-mono ml-auto">
-                {timeAgo(cluster.last_updated_at)}
+                {formatAbsTime(cluster.last_updated_at, timezone)}
               </span>
             </div>
           </div>
@@ -172,8 +174,8 @@ export function EventCard({ cluster, isNew, isUpdated, onSelect }: Props) {
                 <EntityPills entities={cluster.entities} max={8} />
               </div>
               <div className="flex gap-4 text-[10px] text-terminal-dim font-mono">
-                <span>FIRST: {formatTime(cluster.first_seen_at)}</span>
-                <span>LAST:  {formatTime(cluster.last_updated_at)}</span>
+                <span>FIRST: {formatDateTime(cluster.first_seen_at, timezone)}</span>
+                <span>LAST:  {formatDateTime(cluster.last_updated_at, timezone)}</span>
                 <span>ID: {cluster.id.slice(0, 8)}</span>
               </div>
             </div>
