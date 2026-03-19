@@ -142,8 +142,30 @@ export function SCGraph({ ticker, legalName, edges, onNodeClick, onHubClick, onF
   const layout = useMemo(() => {
     const cx = 0, cy = 0
 
+    // Deduplicate edges per category before layout.
+    // BOARD uses first+last name; all others use normalised full name.
+    function normName(s: string) {
+      return s.toLowerCase().replace(/[,\.;:'"()]/g, '').replace(/\s+/g, ' ').trim()
+    }
+    function personKey(s: string) {
+      const parts = normName(s).split(' ').filter(p => p.length > 1 && !p.endsWith('.'))
+      return parts.length >= 2 ? `${parts[0]} ${parts[parts.length - 1]}` : normName(s)
+    }
+    function dedupEdges(es: typeof edges, dir: string) {
+      const seen = new Map<string, typeof edges[0]>()
+      for (const e of es) {
+        const k = dir === 'BOARD' ? personKey(e.entity_name) : normName(e.entity_name)
+        const existing = seen.get(k)
+        if (!existing || (e.confidence ?? 0) > (existing.confidence ?? 0)) seen.set(k, e)
+      }
+      return Array.from(seen.values())
+    }
+
     const activeCats = CAT_DEFS
-      .map(def => ({ ...def, nodes: edges.filter(e => e.direction === def.dir) }))
+      .map(def => ({
+        ...def,
+        nodes: dedupEdges(edges.filter(e => e.direction === def.dir), def.dir),
+      }))
       .filter(c => c.nodes.length > 0)
 
     if (activeCats.length === 0) return null

@@ -399,17 +399,53 @@ async def _run_llm_extraction(
         return []
 
 
+def _normalize_name(name: str) -> str:
+    """Lowercase, strip punctuation, collapse spaces."""
+    n = re.sub(r"[,\.;:'\"\(\)]", "", name.lower())
+    return re.sub(r"\s+", " ", n).strip()
+
+
+def _person_key(name: str) -> str:
+    """
+    For person dedup: use first + last token only.
+    'Timothy D. Cook' → 'timothy cook', 'Tim Cook' → 'tim cook'
+    Handles middle initials and suffixes.
+    """
+    parts = [p for p in _normalize_name(name).split() if len(p) > 1 and not p.endswith(".")]
+    if len(parts) >= 2:
+        return f"{parts[0]} {parts[-1]}"
+    return _normalize_name(name)
+
+
 def _merge_relationships(all_rels: list[dict]) -> list[dict]:
-    """Deduplicate by (entity_name_lower, direction). Keep highest confidence."""
+    """
+    Deduplicate by normalised (name_key, direction).
+    BOARD uses first+last-name key to catch 'Tim Cook' == 'Timothy D. Cook'.
+    Keep highest-confidence entry; append unique evidence snippets.
+    """
     seen: dict[tuple, dict] = {}
     for rel in all_rels:
         name = (rel.get("entity_name") or "").strip()
         if not name or name.lower().startswith("[unnamed]"):
             continue
         direction = rel.get("direction", "UPSTREAM")
-        key = (name.lower(), direction)
-        if key not in seen or (rel.get("confidence") or 0) > (seen[key].get("confidence") or 0):
+
+        # Person-type directions: use first+last for dedup
+        if direction in ("BOARD",):
+            name_key = _person_key(name)
+        else:
+            name_key = _normalize_name(name)
+
+        key = (name_key, direction)
+        if key not in seen:
             seen[key] = rel
+        elif (rel.get("confidence") or 0) > (seen[key].get("confidence") or 0):
+            # Keep this entry but preserve any extra evidence from the old one
+            ev_old = seen[key].get("evidence") or ""
+            seen[key] = rel
+            ev_new = rel.get("evidence") or ""
+            if ev_old and ev_old not in ev_new:
+                seen[key]["evidence"] = (ev_new + " | " + ev_old)[:800]
         else:
             ev_old = seen[key].get("evidence") or ""
             ev_new = rel.get("evidence") or ""

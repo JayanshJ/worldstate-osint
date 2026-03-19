@@ -10,6 +10,7 @@ GET  /api/v1/splc/{ticker}/graph   — return data in force-graph node/edge form
 """
 
 import logging
+import re as _re
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -27,6 +28,36 @@ from app.models.supply_chain import SCCompany, SCEdge
 from app.core.security import get_current_user
 router = APIRouter(dependencies=[Depends(get_current_user)])
 logger = logging.getLogger(__name__)
+
+
+# ─── Edge deduplication ───────────────────────────────────────────────────
+# Catches duplicates that slipped into the DB (e.g. from concurrent background
+# enrichment tasks) without requiring a schema migration.
+
+def _norm(name: str) -> str:
+    n = _re.sub(r"[,\.;:'\"\(\)]", "", name.lower())
+    return _re.sub(r"\s+", " ", n).strip()
+
+def _person_key(name: str) -> str:
+    parts = [p for p in _norm(name).split() if len(p) > 1 and not p.endswith(".")]
+    return f"{parts[0]} {parts[-1]}" if len(parts) >= 2 else _norm(name)
+
+def _dedup_edges(edges: list) -> list:
+    """
+    Deduplicate by (normalised_name, direction).
+    BOARD uses first+last key so 'Tim Cook' == 'Timothy D. Cook'.
+    Keeps the highest-confidence entry per group.
+    """
+    seen: dict[tuple, object] = {}
+    for e in edges:
+        name = (e.entity_name or "").strip()
+        if not name:
+            continue
+        name_key = _person_key(name) if e.direction == "BOARD" else _norm(name)
+        key = (name_key, e.direction)
+        if key not in seen or (e.confidence or 0) > (seen[key].confidence or 0):
+            seen[key] = e
+    return list(seen.values())
 
 
 
@@ -105,7 +136,7 @@ async def get_supply_chain(
         )
     return {
         "company": _company_dict(company),
-        "edges":   [_edge_dict(e) for e in company.edges],
+        "edges":   [_edge_dict(e) for e in _dedup_edges(company.edges)],
     }
 
 
@@ -178,7 +209,7 @@ async def get_graph(
     }]
     links: list[dict] = []
 
-    for e in company.edges:
+    for e in _dedup_edges(company.edges):
         node_id = e.entity_name.replace(" ", "_")
         # Avoid duplicate nodes
         if not any(n["id"] == node_id for n in nodes):

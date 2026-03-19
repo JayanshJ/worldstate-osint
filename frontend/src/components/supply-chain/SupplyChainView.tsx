@@ -239,12 +239,32 @@ const DIR_COLOR: Record<string, string> = {
   INDUSTRY:    '#06b6d4',
 }
 
+// ─── Dedup helper ─────────────────────────────────────────────────────────
+// Collapses duplicate names within a direction group.
+// BOARD uses first+last name key so 'Tim Cook' == 'Timothy D. Cook'.
+function dedupNodes(nodes: SCEdge[], dir: string): SCEdge[] {
+  const norm = (s: string) =>
+    s.toLowerCase().replace(/[,\.;:'"()]/g, '').replace(/\s+/g, ' ').trim()
+  const personKey = (s: string) => {
+    const parts = norm(s).split(' ').filter(p => p.length > 1 && !p.endsWith('.'))
+    return parts.length >= 2 ? `${parts[0]} ${parts[parts.length - 1]}` : norm(s)
+  }
+  const seen = new Map<string, SCEdge>()
+  for (const n of nodes) {
+    const k = dir === 'BOARD' ? personKey(n.entity_name) : norm(n.entity_name)
+    const prev = seen.get(k)
+    if (!prev || (n.confidence ?? 0) > (prev.confidence ?? 0)) seen.set(k, n)
+  }
+  return Array.from(seen.values())
+}
+
 // ─── Hub / category drawer ────────────────────────────────────────────────
 function HubDrawer({ dir, label, nodes, onClose, onNodeClick }: {
   dir: string; label: string; nodes: SCEdge[]; onClose: () => void; onNodeClick?: (e: SCEdge) => void
 }) {
   const color = DIR_COLOR[dir] ?? '#00d4ff'
   const isMeta = ['SHAREHOLDER','BOARD','ANALYST','INDUSTRY'].includes(dir)
+  const dedupedNodes = dedupNodes(nodes, dir)
   return (
     <motion.div
       initial={{ x: 380, opacity: 0 }} animate={{ x: 0, opacity: 1 }}
@@ -256,14 +276,14 @@ function HubDrawer({ dir, label, nodes, onClose, onNodeClick }: {
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full" style={{ background: color }} />
           <span className="font-mono font-bold text-sm" style={{ color }}>{label}</span>
-          <span className="text-[9px] font-mono text-terminal-dim">({nodes.length})</span>
+          <span className="text-[9px] font-mono text-terminal-dim">({dedupedNodes.length})</span>
         </div>
         <button onClick={onClose} className="text-terminal-dim hover:text-terminal-text transition-colors">
           <X size={14} />
         </button>
       </div>
       <div className="flex-1 overflow-y-auto scrollbar-thin p-3 space-y-1">
-        {nodes.map(n => {
+        {dedupedNodes.map(n => {
           const sub = n.relationship_type?.replace(/_/g, ' ') ?? ''
           const pct = n.pct_revenue ?? n.pct_cogs ?? 0
           return (
