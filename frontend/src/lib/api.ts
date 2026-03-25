@@ -125,6 +125,7 @@ export const api = {
     pendingUsers: ()                    => req<any[]>('/admin/users/pending'),
     approveUser:  (userId: string)      => post<any>(`/admin/users/${userId}/approve`, {}),
     rejectUser:   (userId: string)      => del(`/admin/users/${userId}/reject`),
+    serverStatus: ()                    => req<any>('/admin/server/status'),
   },
 
   account: {
