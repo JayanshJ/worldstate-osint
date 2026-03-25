@@ -270,7 +270,7 @@ function HubDrawer({ dir, label, nodes, onClose, onNodeClick }: {
       initial={{ x: 380, opacity: 0 }} animate={{ x: 0, opacity: 1 }}
       exit={{ x: 380, opacity: 0 }}
       transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-      className="w-[360px] flex-shrink-0 border-l border-terminal-border flex flex-col bg-terminal-bg overflow-hidden"
+      className="w-full md:w-[360px] flex-shrink-0 border-l border-terminal-border flex flex-col bg-terminal-bg overflow-hidden"
     >
       <div className="flex items-center justify-between px-4 py-3 border-b border-terminal-border bg-terminal-surface flex-shrink-0">
         <div className="flex items-center gap-2">
@@ -343,7 +343,7 @@ function FocalDrawer({ company, edges, onClose }: {
       initial={{ x: 380, opacity: 0 }} animate={{ x: 0, opacity: 1 }}
       exit={{ x: 380, opacity: 0 }}
       transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-      className="w-[360px] flex-shrink-0 border-l border-terminal-border flex flex-col bg-terminal-bg overflow-hidden"
+      className="w-full md:w-[360px] flex-shrink-0 border-l border-terminal-border flex flex-col bg-terminal-bg overflow-hidden"
     >
       <div className="flex items-center justify-between px-4 py-3 border-b border-terminal-border bg-terminal-surface flex-shrink-0">
         <div className="flex items-center gap-2">
@@ -486,7 +486,7 @@ function EvidenceDrawer({ edge, onClose }: { edge: SCEdge; onClose: () => void }
         animate={{ x: 0, opacity: 1 }}
         exit={{ x: 380, opacity: 0 }}
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-        className="w-[360px] flex-shrink-0 border-l border-terminal-border flex flex-col bg-terminal-bg overflow-hidden"
+        className="w-full md:w-[360px] flex-shrink-0 border-l border-terminal-border flex flex-col bg-terminal-bg overflow-hidden"
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-terminal-border bg-terminal-surface flex-shrink-0">
           <div className="flex items-center gap-2">
@@ -536,7 +536,7 @@ function EvidenceDrawer({ edge, onClose }: { edge: SCEdge; onClose: () => void }
         animate={{ x: 0, opacity: 1 }}
         exit={{ x: 380, opacity: 0 }}
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-        className="w-[360px] flex-shrink-0 border-l border-terminal-border flex flex-col bg-terminal-bg overflow-hidden"
+        className="w-full md:w-[360px] flex-shrink-0 border-l border-terminal-border flex flex-col bg-terminal-bg overflow-hidden"
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-terminal-border bg-terminal-surface flex-shrink-0">
           <div className="flex items-center gap-2">
@@ -579,7 +579,7 @@ function EvidenceDrawer({ edge, onClose }: { edge: SCEdge; onClose: () => void }
       <motion.div
         initial={{ x: 380, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 380, opacity: 0 }}
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-        className="w-[360px] flex-shrink-0 border-l border-terminal-border flex flex-col bg-terminal-bg overflow-hidden"
+        className="w-full md:w-[360px] flex-shrink-0 border-l border-terminal-border flex flex-col bg-terminal-bg overflow-hidden"
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-terminal-border bg-terminal-surface flex-shrink-0">
           <div className="flex items-center gap-2">
@@ -613,7 +613,7 @@ function EvidenceDrawer({ edge, onClose }: { edge: SCEdge; onClose: () => void }
       <motion.div
         initial={{ x: 380, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 380, opacity: 0 }}
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-        className="w-[360px] flex-shrink-0 border-l border-terminal-border flex flex-col bg-terminal-bg overflow-hidden"
+        className="w-full md:w-[360px] flex-shrink-0 border-l border-terminal-border flex flex-col bg-terminal-bg overflow-hidden"
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-terminal-border bg-terminal-surface flex-shrink-0">
           <div className="flex items-center gap-2">
@@ -646,7 +646,7 @@ function EvidenceDrawer({ edge, onClose }: { edge: SCEdge; onClose: () => void }
       animate={{ x: 0, opacity: 1 }}
       exit={{ x: 380, opacity: 0 }}
       transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-      className="w-[360px] flex-shrink-0 border-l border-terminal-border flex flex-col bg-terminal-bg overflow-hidden"
+      className="w-full md:w-[360px] flex-shrink-0 border-l border-terminal-border flex flex-col bg-terminal-bg overflow-hidden"
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-terminal-border bg-terminal-surface flex-shrink-0">
@@ -765,7 +765,7 @@ function CountryDrawer({ country, edges, onClose, onNodeClick }: {
       initial={{ x: 380, opacity: 0 }} animate={{ x: 0, opacity: 1 }}
       exit={{ x: 380, opacity: 0 }}
       transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-      className="w-[360px] flex-shrink-0 border-l border-terminal-border flex flex-col bg-terminal-bg overflow-hidden"
+      className="w-full md:w-[360px] flex-shrink-0 border-l border-terminal-border flex flex-col bg-terminal-bg overflow-hidden"
     >
       <div className="flex items-center justify-between px-4 py-3 border-b border-terminal-border bg-terminal-surface flex-shrink-0">
         <div className="flex items-center gap-2">
@@ -959,7 +959,7 @@ function EntityDetailDrawer({ edge, onClose }: {
       initial={{ x: 380, opacity: 0 }} animate={{ x: 0, opacity: 1 }}
       exit={{ x: 380, opacity: 0 }}
       transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-      className="w-[360px] flex-shrink-0 border-l border-terminal-border flex flex-col bg-terminal-bg overflow-hidden"
+      className="w-full md:w-[360px] flex-shrink-0 border-l border-terminal-border flex flex-col bg-terminal-bg overflow-hidden"
     >
       <div className="flex flex-col border-b border-terminal-border bg-terminal-surface flex-shrink-0">
         <div className="flex items-center justify-between px-4 py-3">
@@ -1428,8 +1428,8 @@ export function SupplyChainView({ initialTicker, onTickerChange }: SupplyChainVi
   return (
     <div className="flex h-full w-full bg-terminal-bg overflow-hidden relative">
 
-      {/* ── Left sidebar: history ─────────────────────────────────────── */}
-      <div className="w-[180px] flex-shrink-0 border-r border-terminal-border flex flex-col bg-terminal-surface/30 z-10">
+      {/* ── Left sidebar: history — hidden on mobile ─────────────────── */}
+      <div className="hidden md:flex w-[180px] flex-shrink-0 border-r border-terminal-border flex-col bg-terminal-surface/30 z-10">
         <div className="px-3 py-2.5 border-b border-terminal-border">
           <span className="text-[9px] font-mono text-terminal-dim tracking-widest">ANALYSED</span>
         </div>
@@ -1469,10 +1469,10 @@ export function SupplyChainView({ initialTicker, onTickerChange }: SupplyChainVi
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
         {/* ── Search bar ── */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-terminal-border bg-terminal-surface/20 flex-shrink-0">
+        <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 border-b border-terminal-border bg-terminal-surface/20 flex-shrink-0">
 
           {/* Search input + dropdown */}
-          <form onSubmit={handleSubmit} className="flex items-center gap-2 flex-1" ref={searchRef}>
+          <form onSubmit={handleSubmit} className="flex items-center gap-2 flex-1 min-w-0" ref={searchRef}>
             <div className="relative flex-1 max-w-[420px]">
               <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-terminal-dim pointer-events-none" />
               <input
@@ -1543,15 +1543,15 @@ export function SupplyChainView({ initialTicker, onTickerChange }: SupplyChainVi
                   )}
                 >
                   <Icon size={10} />
-                  {label}
+                  <span className="hidden sm:inline">{label}</span>
                 </button>
               ))}
             </div>
           )}
 
-          {/* Company badge + re-analyse */}
+          {/* Company badge + re-analyse — hidden on mobile */}
           {company && (
-            <div className="flex items-center gap-2 ml-auto">
+            <div className="hidden sm:flex items-center gap-2 ml-auto">
               <div className="text-right">
                 <div className="text-[11px] font-mono font-bold text-terminal-text">{company.ticker}</div>
                 <div className="text-[8px] font-mono text-terminal-dim/60 max-w-[150px] truncate">

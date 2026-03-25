@@ -22,7 +22,7 @@ function ConnectionIndicator({ status }: { status: ConnectionStatus }) {
       style={{ color: cfg.color, borderColor: `${cfg.color}44`, backgroundColor: `${cfg.color}11` }}
     >
       <Icon size={10} className={status === 'connected' ? 'animate-pulse' : ''} />
-      {cfg.label}
+      <span className="hidden sm:inline">{cfg.label}</span>
     </div>
   )
 }
@@ -133,7 +133,7 @@ export function Header({ onSearchOpen, onAlertsOpen, onSettingsOpen, onAdminOpen
 
   return (
     <>
-      <header className="flex-shrink-0 h-12 bg-terminal-surface border-b border-terminal-border flex items-center px-4 gap-4">
+      <header className="flex-shrink-0 h-12 bg-terminal-surface border-b border-terminal-border flex items-center px-2 md:px-4 gap-2 md:gap-4">
         {/* Branding */}
         <div className="flex items-center gap-2 flex-shrink-0">
           <Globe size={14} className="text-terminal-accent" />
@@ -147,8 +147,8 @@ export function Header({ onSearchOpen, onAlertsOpen, onSettingsOpen, onAdminOpen
 
         <div className="h-6 w-px bg-terminal-border" />
 
-        {/* Stats + metals */}
-        <div className="flex items-center gap-3 flex-1 overflow-hidden">
+        {/* Stats + metals — hidden on mobile/tablet */}
+        <div className="hidden lg:flex items-center gap-3 flex-1 overflow-hidden">
           <StatChip label={timezone === 'UTC' ? 'UTC' : timezone.split('/').pop()!.replace('_', ' ')} value={clock} />
           <div className="h-4 w-px bg-terminal-border" />
           <MetalChip label="XAU" price={metals.gold.price}     change={metals.gold.change}     color="#f5c842" onClick={() => openChart('gold',     'XAU', metals.gold.price,     metals.gold.change)} />
@@ -156,6 +156,8 @@ export function Header({ onSearchOpen, onAlertsOpen, onSettingsOpen, onAdminOpen
           <MetalChip label="XPT" price={metals.platinum.price} change={metals.platinum.change} color="#e2e8f0" onClick={() => openChart('platinum', 'XPT', metals.platinum.price, metals.platinum.change)} />
           <MetalChip label="WTI" price={metals.wti.price}      change={metals.wti.change}      color="#fb923c" onClick={() => openChart('wti',      'WTI', metals.wti.price,      metals.wti.change)} />
         </div>
+        {/* Spacer on mobile/tablet so actions stay right-aligned */}
+        <div className="flex-1 lg:hidden" />
 
         {/* Action buttons */}
         <div className="flex items-center gap-2 flex-shrink-0">

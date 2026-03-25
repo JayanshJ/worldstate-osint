@@ -18,7 +18,8 @@ import { AdminPanel } from '@/components/admin/AdminPanel'
 import { useAlerts } from '@/hooks/useAlerts'
 import { cn } from '@/lib/utils'
 
-type ViewMode = 'dashboard' | 'map' | 'alpha' | 'splc'
+type ViewMode    = 'dashboard' | 'map' | 'alpha' | 'splc'
+type MobilePanel = 'clusters' | 'feed'
 
 const VIEW_PATHS: Record<ViewMode, string> = {
   dashboard: '/',
@@ -43,6 +44,7 @@ export function WarRoom() {
   const [alertsOpen,      setAlertsOpen]      = useState(false)
   const [settingsOpen,    setSettingsOpen]    = useState(false)
   const [adminOpen,       setAdminOpen]       = useState(false)
+  const [mobilePanel,     setMobilePanel]     = useState<MobilePanel>('clusters')
   const [detailClusterId, setDetailClusterId] = useState<string | null>(
     clusterParams?.id ?? null,
   )
@@ -108,10 +110,12 @@ export function WarRoom() {
 
       {/* Stats bar + view toggle */}
       <div className="flex items-stretch flex-shrink-0 border-b border-terminal-border">
-        <div className="flex-1">
+        {/* Stats — hidden on mobile/tablet, show on desktop */}
+        <div className="hidden lg:flex flex-1">
           <StatsBar />
         </div>
-        <div className="flex items-center gap-1 px-3 border-l border-terminal-border bg-terminal-surface">
+        {/* View toggle — full width on mobile, border-left on desktop */}
+        <div className="flex items-center gap-1 px-3 border-terminal-border bg-terminal-surface flex-1 md:flex-none md:border-l justify-center md:justify-start">
           {([
             { mode: 'dashboard' as ViewMode, icon: LayoutDashboard, label: 'FEED'  },
             { mode: 'map'       as ViewMode, icon: Globe,            label: 'MAP'   },
@@ -145,13 +149,43 @@ export function WarRoom() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
-              className="flex flex-1 min-w-0 divide-x divide-terminal-border"
+              className="flex flex-col flex-1 min-w-0"
             >
-              <div className="flex-[65] min-w-0 overflow-hidden">
-                <ClusterFeed onClusterSelect={openCluster} />
+              {/* Mobile panel tab switcher — hidden at md+ (side-by-side) */}
+              <div className="flex md:hidden flex-shrink-0 border-b border-terminal-border">
+                {([
+                  { panel: 'clusters' as MobilePanel, label: 'CLUSTERS' },
+                  { panel: 'feed'     as MobilePanel, label: 'LIVE FEED' },
+                ] as const).map(({ panel, label }) => (
+                  <button
+                    key={panel}
+                    onClick={() => setMobilePanel(panel)}
+                    className={cn(
+                      'flex-1 py-2 text-[10px] font-mono tracking-widest transition-colors',
+                      mobilePanel === panel
+                        ? 'text-terminal-accent border-b-2 border-terminal-accent'
+                        : 'text-terminal-dim',
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
-              <div className="flex-[35] min-w-0 overflow-hidden">
-                <LiveFeed />
+
+              {/* Content panels */}
+              <div className="flex flex-1 min-w-0 min-h-0 md:divide-x md:divide-terminal-border">
+                <div className={cn(
+                  'md:flex-[65] min-w-0 overflow-hidden',
+                  mobilePanel === 'clusters' ? 'flex flex-1 flex-col' : 'hidden md:block md:flex-[65]',
+                )}>
+                  <ClusterFeed onClusterSelect={openCluster} />
+                </div>
+                <div className={cn(
+                  'md:flex-[35] min-w-0 overflow-hidden',
+                  mobilePanel === 'feed' ? 'flex flex-1 flex-col' : 'hidden md:block md:flex-[35]',
+                )}>
+                  <LiveFeed />
+                </div>
               </div>
             </motion.div>
           ) : viewMode === 'map' ? (
