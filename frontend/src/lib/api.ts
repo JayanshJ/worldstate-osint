@@ -1,4 +1,4 @@
-import type { EventCluster, MarketStrategy, RawArticle } from '@/types'
+import type { DigestStory, EventCluster, MarketStrategy, RawArticle, WatchlistEntity } from '@/types'
 
 const BASE = '/api/v1'
 const TOKEN_KEY = 'ws_token'
@@ -126,6 +126,17 @@ export const api = {
 
   account: {
     deleteMe: () => del('/auth/me'),
+  },
+
+  digest: {
+    get:     ()  => req<DigestStory[]>(`${BASE}/digest/`),
+    refresh: ()  => post<DigestStory[]>(`${BASE}/digest/refresh`, {}),
+  },
+
+  watchlist: {
+    get:    ()                          => req<WatchlistEntity[]>(`${BASE}/watchlist/`),
+    add:    (item: WatchlistEntity)     => post<WatchlistEntity[]>(`${BASE}/watchlist/`, item),
+    remove: (name: string)              => del(`${BASE}/watchlist/${encodeURIComponent(name)}`),
   },
 }
 

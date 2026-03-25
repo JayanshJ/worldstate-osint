@@ -43,6 +43,27 @@ export interface RawArticle {
   ingested_at:      string | null
   credibility_score: number
   is_processed:     boolean
+  // Cluster context (populated when article belongs to a cluster)
+  cluster_id?:      string | null
+  cluster_label?:   string | null
+  sentiment?:       number | null
+}
+
+export interface DigestStory {
+  id:              string
+  label:           string
+  bullets:         string[]
+  entities:        KeyEntities | null
+  sentiment:       number
+  volatility:      number
+  member_count:    number
+  weighted_score:  number
+  last_updated_at: string | null
+}
+
+export interface WatchlistEntity {
+  name: string
+  type: 'person' | 'org' | 'location' | 'keyword'
 }
 
 // ─── WebSocket Message Types ───────────────────────────────────────────────

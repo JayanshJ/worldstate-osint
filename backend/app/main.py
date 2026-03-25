@@ -11,6 +11,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.api.routes import alerts, clusters, company, feed, metals, orgs, search, stats, strategies, websocket, research
 from app.api.routes import supply_chain, auth
 from app.api.routes import admin
+from app.api.routes import digest, watchlist
 from app.api.routes.metals import start_metals_background
 from app.core.config import get_settings
 from app.core.database import engine
@@ -74,6 +75,8 @@ app.include_router(strategies.router,     prefix="/api/v1/strategies", tags=["st
 app.include_router(supply_chain.router,   prefix="/api/v1/splc",       tags=["supply-chain"])
 app.include_router(company.router,        prefix="/api/v1/company",    tags=["company"])
 app.include_router(research.router,       prefix="/api/v1/research",   tags=["research"])
+app.include_router(digest.router,         prefix="/api/v1/digest",     tags=["digest"])
+app.include_router(watchlist.router,      prefix="/api/v1/watchlist",  tags=["watchlist"])
 app.include_router(websocket.router,                                    tags=["websocket"])
 
 
