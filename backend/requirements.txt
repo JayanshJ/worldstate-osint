@@ -38,6 +38,10 @@ bcrypt==4.2.1
 python-multipart==0.0.20
 email-validator==2.2.0
 
+# ─── Server monitoring ────────────────────────────────────────────────────
+psutil==6.1.1
+docker==7.1.0
+
 # ─── Config ───────────────────────────────────────────────────────────────
 pydantic-settings==2.7.0
 python-dotenv==1.0.1

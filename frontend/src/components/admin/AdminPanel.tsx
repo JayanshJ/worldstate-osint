@@ -36,7 +36,45 @@ interface UsageRow {
   avg_latency_ms: number
 }
 
-type Tab = 'pending' | 'orgs' | 'usage' | 'audit'
+interface ServerStatus {
+  system: {
+    cpu_percent: number
+    ram_used_mb: number
+    ram_total_mb: number
+    ram_percent: number
+    disk_used_gb: number
+    disk_total_gb: number
+    disk_percent: number
+    uptime_seconds: number
+  }
+  containers: Array<{
+    id: string
+    name: string
+    image: string
+    status: string
+    health: string
+    cpu_percent: number
+    mem_mb: number
+    mem_percent: number
+    error?: string
+  }>
+  ssl: {
+    domain?: string
+    expires_at?: string
+    days_remaining?: number
+    valid?: boolean
+    error?: string
+  }
+  ping: {
+    url?: string
+    up?: boolean | null
+    status_code?: number
+    latency_ms?: number
+    error?: string
+  }
+}
+
+type Tab = 'server' | 'pending' | 'orgs' | 'usage' | 'audit'
 
 const METHOD_COLORS: Record<string, string> = {
   GET:    'text-blue-400',
@@ -53,7 +91,8 @@ function statusColor(code: number) {
 }
 
 export function AdminPanel({ onClose }: { onClose: () => void }) {
-  const [tab, setTab]         = useState<Tab>('pending')
+  const [tab, setTab]         = useState<Tab>('server')
+  const [server, setServer]   = useState<ServerStatus | null>(null)
   const [pending, setPending] = useState<PendingUser[]>([])
   const [orgs, setOrgs]       = useState<OrgStat[]>([])
   const [audit, setAudit]     = useState<AuditEntry[]>([])
@@ -65,6 +104,7 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
     setLoading(true)
     setError(null)
     try {
+      if (t === 'server')  setServer(await api.admin.serverStatus())
       if (t === 'pending') setPending(await api.admin.pendingUsers())
       if (t === 'orgs')    setOrgs(await api.admin.listOrgs())
       if (t === 'audit')   setAudit(await api.admin.auditLog())
@@ -75,6 +115,15 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
       setLoading(false)
     }
   }
+
+  // Auto-refresh server stats every 10s
+  useEffect(() => {
+    if (tab !== 'server') return
+    const id = setInterval(() => {
+      api.admin.serverStatus().then(setServer).catch(() => {})
+    }, 10_000)
+    return () => clearInterval(id)
+  }, [tab])
 
   async function approve(id: string) {
     await api.admin.approveUser(id)
@@ -101,7 +150,7 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
 
       {/* Tabs */}
       <div className="flex gap-0 border-b border-gray-800">
-        {(['pending', 'orgs', 'usage', 'audit'] as Tab[]).map(t => (
+        {(['server', 'pending', 'orgs', 'usage', 'audit'] as Tab[]).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -111,7 +160,7 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
                 : 'border-transparent text-gray-500 hover:text-gray-300'
             }`}
           >
-            {t === 'pending' ? 'Approvals' : t === 'orgs' ? 'Organisations' : t === 'usage' ? 'Usage (30d)' : 'Audit Log'}
+            {t === 'server' ? 'Server' : t === 'pending' ? 'Approvals' : t === 'orgs' ? 'Organisations' : t === 'usage' ? 'Usage (30d)' : 'Audit Log'}
             {t === 'pending' && pending.length > 0 && (
               <span className="bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">{pending.length}</span>
             )}
@@ -130,6 +179,105 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
       <div className="flex-1 overflow-auto p-6">
         {loading && <p className="text-gray-500 animate-pulse">Loading...</p>}
         {error   && <p className="text-red-400">Error: {error}</p>}
+
+        {/* ── Server ── */}
+        {!loading && tab === 'server' && (
+          <div className="space-y-6">
+            {!server ? (
+              <p className="text-gray-500">Loading server status…</p>
+            ) : (
+              <>
+                {/* Site ping + SSL */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-gray-900/50 border border-gray-800 rounded p-4">
+                    <p className="text-gray-500 text-xs uppercase tracking-widest mb-2">Site Status</p>
+                    {server.ping.up === null ? (
+                      <p className="text-gray-500 text-sm">Not configured</p>
+                    ) : server.ping.up ? (
+                      <div>
+                        <span className="text-green-400 font-bold text-lg">● ONLINE</span>
+                        <p className="text-gray-400 text-xs mt-1">{server.ping.latency_ms}ms · HTTP {server.ping.status_code}</p>
+                        <p className="text-gray-600 text-xs truncate">{server.ping.url}</p>
+                      </div>
+                    ) : (
+                      <div>
+                        <span className="text-red-400 font-bold text-lg">● DOWN</span>
+                        <p className="text-gray-400 text-xs mt-1">{server.ping.error}</p>
+                      </div>
+                    )}
+                  </div>
+                  <div className="bg-gray-900/50 border border-gray-800 rounded p-4">
+                    <p className="text-gray-500 text-xs uppercase tracking-widest mb-2">SSL Certificate</p>
+                    {server.ssl.error ? (
+                      <p className="text-red-400 text-sm">{server.ssl.error}</p>
+                    ) : server.ssl.days_remaining !== undefined ? (
+                      <div>
+                        <span className={`font-bold text-lg ${server.ssl.days_remaining > 14 ? 'text-green-400' : 'text-red-400'}`}>
+                          {server.ssl.days_remaining}d left
+                        </span>
+                        <p className="text-gray-400 text-xs mt-1">Expires {server.ssl.expires_at}</p>
+                        <p className="text-gray-600 text-xs">{server.ssl.domain}</p>
+                      </div>
+                    ) : (
+                      <p className="text-gray-500 text-sm">Not configured</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* System metrics */}
+                <div className="bg-gray-900/50 border border-gray-800 rounded p-4">
+                  <p className="text-gray-500 text-xs uppercase tracking-widest mb-3">System Resources</p>
+                  <div className="grid grid-cols-3 gap-4">
+                    {[
+                      { label: 'CPU',  pct: server.system.cpu_percent,  text: `${server.system.cpu_percent}%` },
+                      { label: 'RAM',  pct: server.system.ram_percent,  text: `${server.system.ram_used_mb}MB / ${server.system.ram_total_mb}MB` },
+                      { label: 'DISK', pct: server.system.disk_percent, text: `${server.system.disk_used_gb}GB / ${server.system.disk_total_gb}GB` },
+                    ].map(({ label, pct, text }) => (
+                      <div key={label}>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-gray-400">{label}</span>
+                          <span className={pct > 80 ? 'text-red-400' : pct > 60 ? 'text-yellow-400' : 'text-green-400'}>{pct}%</span>
+                        </div>
+                        <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${pct > 80 ? 'bg-red-500' : pct > 60 ? 'bg-yellow-500' : 'bg-green-500'}`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <p className="text-gray-600 text-xs mt-1">{text}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-gray-600 text-xs mt-3">
+                    Uptime: {Math.floor(server.system.uptime_seconds / 86400)}d {Math.floor((server.system.uptime_seconds % 86400) / 3600)}h {Math.floor((server.system.uptime_seconds % 3600) / 60)}m
+                  </p>
+                </div>
+
+                {/* Containers */}
+                <div className="bg-gray-900/50 border border-gray-800 rounded p-4">
+                  <p className="text-gray-500 text-xs uppercase tracking-widest mb-3">Containers</p>
+                  <div className="space-y-2">
+                    {server.containers.map((c, i) => (
+                      <div key={i} className="flex items-center justify-between py-2 border-b border-gray-800/50 last:border-0">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                            c.status === 'running' ? (c.health === 'unhealthy' ? 'bg-yellow-400' : 'bg-green-400') : 'bg-red-400'
+                          }`} />
+                          <span className="text-white text-xs font-mono truncate">{c.name.replace(/^worldstate-osint-/, '')}</span>
+                        </div>
+                        <div className="flex items-center gap-4 flex-shrink-0 text-xs font-mono">
+                          <span className="text-gray-500">{c.mem_mb}MB</span>
+                          <span className="text-gray-500">{c.cpu_percent}%</span>
+                          <span className={c.status === 'running' ? 'text-green-400' : 'text-red-400'}>{c.status}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* ── Pending Approvals ── */}
         {!loading && tab === 'pending' && (

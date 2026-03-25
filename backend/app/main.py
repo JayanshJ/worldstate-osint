@@ -12,6 +12,7 @@ from app.api.routes import alerts, clusters, company, feed, metals, orgs, search
 from app.api.routes import supply_chain, auth
 from app.api.routes import admin
 from app.api.routes import digest, watchlist
+from app.api.routes import server as server_routes
 from app.api.routes.metals import start_metals_background
 from app.core.config import get_settings
 from app.core.database import engine
@@ -64,6 +65,7 @@ app.add_middleware(
 
 app.include_router(auth.router,           prefix="/auth",              tags=["auth"])
 app.include_router(admin.router,          prefix="/admin",             tags=["admin"])
+app.include_router(server_routes.router,  prefix="/admin/server",      tags=["server"])
 app.include_router(orgs.router,           prefix="/api/v1/orgs",       tags=["orgs"])
 app.include_router(clusters.router,       prefix="/api/v1/clusters",   tags=["clusters"])
 app.include_router(metals.router,         prefix="/api/v1/metals",     tags=["metals"])

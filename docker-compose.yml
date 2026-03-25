@@ -50,6 +50,7 @@ services:
       FINNHUB_API_KEY:  ${FINNHUB_API_KEY:-}
       JWT_SECRET_KEY:   ${JWT_SECRET_KEY}
       ENVIRONMENT:      ${ENVIRONMENT:-production}
+      DOMAIN:           ${DOMAIN:-}
     depends_on:
       postgres:
         condition: service_healthy
