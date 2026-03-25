@@ -56,7 +56,14 @@ export function LoginPage() {
           </div>
 
           {error && (
-            <p className="text-xs text-red-400 bg-red-950/30 border border-red-900 rounded px-3 py-2">{error}</p>
+            error.toLowerCase().includes('pending') ? (
+              <div className="text-xs bg-yellow-950/30 border border-yellow-800 rounded px-3 py-2 space-y-1">
+                <p className="text-yellow-400 font-bold tracking-wider">PENDING APPROVAL</p>
+                <p className="text-yellow-300/70">Your account is awaiting admin approval. You'll be able to sign in once approved.</p>
+              </div>
+            ) : (
+              <p className="text-xs text-red-400 bg-red-950/30 border border-red-900 rounded px-3 py-2">{error}</p>
+            )
           )}
 
           <button

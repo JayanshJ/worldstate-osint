@@ -6,7 +6,7 @@ import re
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import delete as sql_delete, func, select
+from sqlalchemy import delete as sql_delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -39,6 +39,10 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
 
+    # First user ever → auto-approved admin; everyone else waits for approval
+    user_count = (await db.execute(select(func.count()).select_from(User))).scalar() or 0
+    is_first = user_count == 0
+
     # Auto-create a personal organisation for the new user
     base_slug = _email_to_slug(body.email)
     slug = base_slug
@@ -49,13 +53,23 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
 
     org = Organization(name=f"{body.email.split('@')[0]}'s Org", slug=slug)
     db.add(org)
-    await db.flush()  # get org.id
+    await db.flush()
 
-    user = User(email=body.email, hashed_password=hash_password(body.password), org_id=org.id, is_admin=True)
+    user = User(
+        email=body.email,
+        hashed_password=hash_password(body.password),
+        org_id=org.id,
+        is_admin=is_first,
+        is_approved=is_first,
+    )
     db.add(user)
     await db.flush()
     await db.commit()
-    return {"id": str(user.id), "email": user.email, "org_id": str(org.id), "created_at": user.created_at}
+    return {
+        "id": str(user.id), "email": user.email,
+        "org_id": str(org.id), "created_at": user.created_at,
+        "is_approved": user.is_approved,
+    }
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -64,6 +78,8 @@ async def login(form: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = 
     user = result.scalar_one_or_none()
     if not user or not verify_password(form.password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    if not user.is_approved:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Your account is pending approval. An admin will review your request shortly.")
     return TokenResponse(access_token=create_access_token(sub=user.email))
 
 

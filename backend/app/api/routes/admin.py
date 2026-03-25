@@ -173,6 +173,45 @@ async def audit_log(
 
 # ── Users ──────────────────────────────────────────────────────────────────
 
+@router.get("/users/pending")
+async def pending_users(
+    admin: Annotated[User, Depends(require_admin)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    users = (await db.execute(
+        select(User).where(User.is_approved == False).order_by(User.created_at.asc())  # noqa: E712
+    )).scalars().all()
+    return [{"id": str(u.id), "email": u.email, "created_at": u.created_at.isoformat() if u.created_at else None} for u in users]
+
+
+@router.post("/users/{user_id}/approve")
+async def approve_user(
+    user_id: uuid.UUID,
+    admin: Annotated[User, Depends(require_admin)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    target = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not target:
+        raise HTTPException(404, "User not found")
+    target.is_approved = True
+    await db.commit()
+    return {"id": str(target.id), "email": target.email, "is_approved": True}
+
+
+@router.post("/users/{user_id}/reject")
+async def reject_user(
+    user_id: uuid.UUID,
+    admin: Annotated[User, Depends(require_admin)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    target = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not target:
+        raise HTTPException(404, "User not found")
+    await db.execute(delete(User).where(User.id == user_id))
+    await db.commit()
+    return {"deleted": True}
+
+
 @router.post("/users/{user_id}/toggle-admin")
 async def toggle_admin(
     user_id: uuid.UUID,

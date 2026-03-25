@@ -9,6 +9,7 @@ export function RegisterPage() {
   const [password, setPassword]  = useState('')
   const [error, setError]        = useState<string | null>(null)
   const [loading, setLoading]    = useState(false)
+  const [pending, setPending]    = useState(false)
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -24,7 +25,14 @@ export function RegisterPage() {
         const err = await res.json().catch(() => ({ detail: 'Registration failed' }))
         throw new Error(err.detail ?? 'Registration failed')
       }
-      // Auto-login after register
+      const data = await res.json()
+      if (!data.is_approved) {
+        // Not the first user — show pending message instead of auto-login
+        setPending(true)
+        setLoading(false)
+        return
+      }
+      // First user — auto-login
       await login(email, password)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Registration failed')
@@ -71,13 +79,22 @@ export function RegisterPage() {
             <p className="text-xs text-red-400 bg-red-950/30 border border-red-900 rounded px-3 py-2">{error}</p>
           )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-white text-black text-sm font-medium rounded py-2 hover:bg-neutral-200 disabled:opacity-50 transition-colors"
-          >
-            {loading ? 'Creating account…' : 'Create account'}
-          </button>
+          {pending && (
+            <div className="text-xs bg-yellow-950/30 border border-yellow-800 rounded px-3 py-2 space-y-1">
+              <p className="text-yellow-400 font-bold tracking-wider">REQUEST SUBMITTED</p>
+              <p className="text-yellow-300/70">Your account is pending admin approval. You'll receive access once approved.</p>
+            </div>
+          )}
+
+          {!pending && (
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-white text-black text-sm font-medium rounded py-2 hover:bg-neutral-200 disabled:opacity-50 transition-colors"
+            >
+              {loading ? 'Creating account…' : 'Create account'}
+            </button>
+          )}
         </form>
 
         <p className="text-center text-xs text-neutral-600">

@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
 
+interface PendingUser {
+  id: string
+  email: string
+  created_at: string | null
+}
+
 interface OrgStat {
   id: string
   name: string
@@ -30,7 +36,7 @@ interface UsageRow {
   avg_latency_ms: number
 }
 
-type Tab = 'orgs' | 'usage' | 'audit'
+type Tab = 'pending' | 'orgs' | 'usage' | 'audit'
 
 const METHOD_COLORS: Record<string, string> = {
   GET:    'text-blue-400',
@@ -47,25 +53,37 @@ function statusColor(code: number) {
 }
 
 export function AdminPanel({ onClose }: { onClose: () => void }) {
-  const [tab, setTab] = useState<Tab>('orgs')
-  const [orgs, setOrgs] = useState<OrgStat[]>([])
-  const [audit, setAudit] = useState<AuditEntry[]>([])
-  const [usage, setUsage] = useState<UsageRow[]>([])
+  const [tab, setTab]         = useState<Tab>('pending')
+  const [pending, setPending] = useState<PendingUser[]>([])
+  const [orgs, setOrgs]       = useState<OrgStat[]>([])
+  const [audit, setAudit]     = useState<AuditEntry[]>([])
+  const [usage, setUsage]     = useState<UsageRow[]>([])
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError]     = useState<string | null>(null)
 
   async function load(t: Tab) {
     setLoading(true)
     setError(null)
     try {
-      if (t === 'orgs')  setOrgs(await api.admin.listOrgs())
-      if (t === 'audit') setAudit(await api.admin.auditLog())
-      if (t === 'usage') setUsage(await api.admin.usage())
+      if (t === 'pending') setPending(await api.admin.pendingUsers())
+      if (t === 'orgs')    setOrgs(await api.admin.listOrgs())
+      if (t === 'audit')   setAudit(await api.admin.auditLog())
+      if (t === 'usage')   setUsage(await api.admin.usage())
     } catch (e: any) {
       setError(e.message)
     } finally {
       setLoading(false)
     }
+  }
+
+  async function approve(id: string) {
+    await api.admin.approveUser(id)
+    setPending(p => p.filter(u => u.id !== id))
+  }
+
+  async function reject(id: string) {
+    await api.admin.rejectUser(id)
+    setPending(p => p.filter(u => u.id !== id))
   }
 
   useEffect(() => { load(tab) }, [tab])
@@ -83,17 +101,20 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
 
       {/* Tabs */}
       <div className="flex gap-0 border-b border-gray-800">
-        {(['orgs', 'usage', 'audit'] as Tab[]).map(t => (
+        {(['pending', 'orgs', 'usage', 'audit'] as Tab[]).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`px-6 py-2 text-xs uppercase tracking-widest border-b-2 transition-colors ${
+            className={`px-6 py-2 text-xs uppercase tracking-widest border-b-2 transition-colors flex items-center gap-1.5 ${
               tab === t
                 ? 'border-green-400 text-green-400'
                 : 'border-transparent text-gray-500 hover:text-gray-300'
             }`}
           >
-            {t === 'orgs' ? 'Organisations' : t === 'usage' ? 'Usage (30d)' : 'Audit Log'}
+            {t === 'pending' ? 'Approvals' : t === 'orgs' ? 'Organisations' : t === 'usage' ? 'Usage (30d)' : 'Audit Log'}
+            {t === 'pending' && pending.length > 0 && (
+              <span className="bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">{pending.length}</span>
+            )}
           </button>
         ))}
         <div className="flex-1" />
@@ -109,6 +130,38 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
       <div className="flex-1 overflow-auto p-6">
         {loading && <p className="text-gray-500 animate-pulse">Loading...</p>}
         {error   && <p className="text-red-400">Error: {error}</p>}
+
+        {/* ── Pending Approvals ── */}
+        {!loading && tab === 'pending' && (
+          <div className="space-y-2 max-w-xl">
+            {pending.length === 0 ? (
+              <p className="text-gray-600 py-8 text-center">No pending approvals</p>
+            ) : (
+              pending.map(u => (
+                <div key={u.id} className="flex items-center justify-between px-4 py-3 bg-gray-900/50 border border-gray-800 rounded">
+                  <div>
+                    <p className="text-white text-sm">{u.email}</p>
+                    <p className="text-gray-500 text-xs mt-0.5">{u.created_at ? new Date(u.created_at).toLocaleString() : '—'}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => approve(u.id)}
+                      className="px-3 py-1 text-xs font-bold text-green-400 border border-green-500/40 hover:bg-green-500/10 rounded transition-colors"
+                    >
+                      APPROVE
+                    </button>
+                    <button
+                      onClick={() => reject(u.id)}
+                      className="px-3 py-1 text-xs font-bold text-red-400 border border-red-500/40 hover:bg-red-500/10 rounded transition-colors"
+                    >
+                      REJECT
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
 
         {/* ── Orgs ── */}
         {!loading && tab === 'orgs' && (

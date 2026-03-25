@@ -121,7 +121,10 @@ export const api = {
     deleteOrg:(id: string)              => del(`/admin/orgs/${id}`),
     usage:    (days = 30)               => req<any[]>('/admin/usage', { days }),
     auditLog: (limit = 200, offset = 0) => req<any[]>('/admin/audit', { limit, offset }),
-    toggleAdmin: (userId: string)       => post<any>(`/admin/users/${userId}/toggle-admin`, {}),
+    toggleAdmin:  (userId: string)      => post<any>(`/admin/users/${userId}/toggle-admin`, {}),
+    pendingUsers: ()                    => req<any[]>('/admin/users/pending'),
+    approveUser:  (userId: string)      => post<any>(`/admin/users/${userId}/approve`, {}),
+    rejectUser:   (userId: string)      => del(`/admin/users/${userId}/reject`),
   },
 
   account: {
