@@ -18,15 +18,18 @@ _COMMODITIES: list[tuple[str, str, str]] = [
     ("gold",     "XAU",   "usd_int"),
     ("silver",   "XAG",   "usd_dec"),
     ("platinum", "XPT",   "usd_int"),
-    ("wti",      "USOIL", "usd_2dp"),
+    ("wti",      "CL=F",  "usd_2dp"),  # Yahoo Finance ticker for WTI crude futures
 ]
+
+# gold-api.com symbols (XAU/XAG/XPT); WTI uses Yahoo Finance instead
+_GOLD_API_KEYS = {"gold", "silver", "platinum"}
 
 # Stooq symbols for daily/weekly historical data
 _STOOQ: dict[str, str] = {
     "gold":     "xauusd",
     "silver":   "xagusd",
     "platinum": "xptusd",
-    "wti":      "",        # stooq has no reliable WTI symbol — uses intraday fallback
+    "wti":      "@cl.us",   # WTI crude oil continuous futures on stooq
 }
 
 # In-memory spot cache
@@ -65,6 +68,18 @@ def _intraday_change(current: float, key: str) -> float | None:
     return round((current - _day_open[key]) / _day_open[key] * 100, 2)
 
 
+async def _fetch_yahoo(ticker: str, client: httpx.AsyncClient, key: str, fmt: str) -> dict:
+    """Fetch spot price from Yahoo Finance (used for WTI crude)."""
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1m&range=1d"
+    r = await client.get(url, headers={**HEADERS, "Accept": "application/json"}, timeout=10, follow_redirects=True)
+    r.raise_for_status()
+    result = r.json()["chart"]["result"][0]
+    current = float(result["meta"]["regularMarketPrice"])
+    change  = _intraday_change(current, key)
+    _history[key].append({"t": datetime.now(timezone.utc).isoformat(), "p": current})
+    return {"price": _fmt_price(current, fmt), "change": change, "raw": current}
+
+
 async def _fetch_gold_api(symbol: str, client: httpx.AsyncClient, key: str, fmt: str) -> dict:
     url = f"https://api.gold-api.com/price/{symbol}"
     r = await client.get(url, headers=HEADERS, timeout=10, follow_redirects=True)
@@ -96,7 +111,14 @@ async def _fetch_with_retry(symbol: str, key: str, fmt: str, client: httpx.Async
 async def _refresh_cache() -> None:
     async with httpx.AsyncClient() as client:
         for key, symbol, fmt in _COMMODITIES:
-            result = await _fetch_with_retry(symbol, key, fmt, client)
+            if key in _GOLD_API_KEYS:
+                result = await _fetch_with_retry(symbol, key, fmt, client)
+            else:
+                # WTI and any non-gold-api commodity use Yahoo Finance
+                try:
+                    result = await _fetch_yahoo(symbol, client, key, fmt)
+                except Exception:
+                    result = None
             if result:
                 _cache[key] = result
             await asyncio.sleep(0.3)
