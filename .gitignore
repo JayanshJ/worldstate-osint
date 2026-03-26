@@ -43,3 +43,4 @@ redisdata/
 # Logs
 *.log
 logs/
+frontend/src/**/*.js
