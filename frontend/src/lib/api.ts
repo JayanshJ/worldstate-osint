@@ -128,6 +128,11 @@ export const api = {
     serverStatus: ()                    => req<any>('/admin/server/status'),
   },
 
+  live: {
+    aircraft: () => req<AircraftData[]>(`${BASE}/live/aircraft`),
+    vessels:  () => req<VesselZone[]>(`${BASE}/live/vessels`),
+  },
+
   account: {
     deleteMe: () => del('/auth/me'),
   },
@@ -344,6 +349,28 @@ export interface CompanyProfile {
     recent:         AnalystRating[]
   }
   board: BoardMember[]
+}
+
+export interface AircraftData {
+  icao24:   string
+  callsign: string | null
+  country:  string
+  lon:      number
+  lat:      number
+  altitude: number
+  velocity: number
+  heading:  number
+}
+
+export interface VesselZone {
+  id:           string
+  name:         string
+  lon:          number
+  lat:          number
+  query:        string
+  significance: string
+  threat:       string
+  color:        string
 }
 
 export interface SystemStats {

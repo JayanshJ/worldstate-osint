@@ -13,6 +13,7 @@ from app.api.routes import supply_chain, auth
 from app.api.routes import admin
 from app.api.routes import digest, watchlist
 from app.api.routes import server as server_routes
+from app.api.routes import live
 from app.api.routes.metals import start_metals_background
 from app.core.config import get_settings
 from app.core.database import engine
@@ -79,6 +80,7 @@ app.include_router(company.router,        prefix="/api/v1/company",    tags=["co
 app.include_router(research.router,       prefix="/api/v1/research",   tags=["research"])
 app.include_router(digest.router,         prefix="/api/v1/digest",     tags=["digest"])
 app.include_router(watchlist.router,      prefix="/api/v1/watchlist",  tags=["watchlist"])
+app.include_router(live.router,           prefix="/api/v1/live",       tags=["live"])
 app.include_router(websocket.router,                                    tags=["websocket"])
 
 
