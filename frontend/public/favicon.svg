@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Dark background circle -->
+  <circle cx="16" cy="16" r="16" fill="#0a0a0f"/>
+  <!-- Globe outline -->
+  <circle cx="16" cy="16" r="11" fill="none" stroke="#00d4ff" stroke-width="1.5"/>
+  <!-- Equator -->
+  <line x1="5" y1="16" x2="27" y2="16" stroke="#00d4ff" stroke-width="1" stroke-opacity="0.5"/>
+  <!-- Meridian (vertical) -->
+  <line x1="16" y1="5" x2="16" y2="27" stroke="#00d4ff" stroke-width="1" stroke-opacity="0.5"/>
+  <!-- Left longitude arc -->
+  <path d="M16,5 Q10,16 16,27" fill="none" stroke="#00d4ff" stroke-width="1" stroke-opacity="0.4"/>
+  <!-- Right longitude arc -->
+  <path d="M16,5 Q22,16 16,27" fill="none" stroke="#00d4ff" stroke-width="1" stroke-opacity="0.4"/>
+  <!-- Pulse dot (top-right hotspot) -->
+  <circle cx="22" cy="10" r="2.5" fill="#00d4ff" opacity="0.9"/>
+  <circle cx="22" cy="10" r="4" fill="none" stroke="#00d4ff" stroke-width="0.75" opacity="0.4"/>
+</svg>
