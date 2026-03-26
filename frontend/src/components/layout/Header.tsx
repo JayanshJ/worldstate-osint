@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { Activity, Bell, Globe, LogOut, Search, Settings, ShieldCheck, Wifi, WifiOff, AlertTriangle } from 'lucide-react'
+import { Activity, Bell, Globe, LogOut, Moon, Search, Settings, ShieldCheck, Sun, Wifi, WifiOff, AlertTriangle } from 'lucide-react'
 import { useWebSocket } from '@/context/WebSocketContext'
 import { useAuth } from '@/context/AuthContext'
+import { useTheme } from '@/context/ThemeContext'
 import type { ConnectionStatus } from '@/types'
 import { cn, formatTzClock } from '@/lib/utils'
 import { useTimezone } from '@/context/TimezoneContext'
@@ -100,6 +101,7 @@ export function Header({ onSearchOpen, onAlertsOpen, onSettingsOpen, onAdminOpen
   const { status } = useWebSocket()
   const { user, logout } = useAuth()
   const { timezone } = useTimezone()
+  const { theme, toggleTheme } = useTheme()
   const [clock,    setClock]    = useState(formatTzClock(timezone))
   const [metals,   setMetals]   = useState<MetalsData>(EMPTY_METALS)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -188,6 +190,14 @@ export function Header({ onSearchOpen, onAlertsOpen, onSettingsOpen, onAdminOpen
                 {alertCount > 9 ? '9+' : alertCount}
               </span>
             )}
+          </button>
+
+          <button
+            onClick={toggleTheme}
+            className="flex items-center justify-center w-7 h-7 text-terminal-dim hover:text-terminal-text border border-terminal-border hover:border-terminal-accent/40 rounded-sm transition-colors"
+            title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+          >
+            {theme === 'dark' ? <Sun size={12} /> : <Moon size={12} />}
           </button>
 
           <ConnectionIndicator status={status} />

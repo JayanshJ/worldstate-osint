@@ -9,15 +9,15 @@ export default {
         sans:  ['Inter', 'system-ui', 'sans-serif'],
       },
       colors: {
-        // Terminal palette — Bloomberg-inspired
+        // Terminal palette — theme-aware via CSS variables
         terminal: {
-          bg:       '#0a0a0f',
-          surface:  '#0f0f1a',
-          border:   '#1a1a2e',
-          muted:    '#2a2a3e',
-          text:     '#c8d3e8',
-          dim:      '#5a6380',
-          accent:   '#00d4ff',
+          bg:      'rgb(var(--t-bg) / <alpha-value>)',
+          surface: 'rgb(var(--t-surface) / <alpha-value>)',
+          border:  'rgb(var(--t-border) / <alpha-value>)',
+          muted:   'rgb(var(--t-muted) / <alpha-value>)',
+          text:    'rgb(var(--t-text) / <alpha-value>)',
+          dim:     'rgb(var(--t-dim) / <alpha-value>)',
+          accent:  'rgb(var(--t-accent) / <alpha-value>)',
         },
         // Volatility spectrum (calm → breaking)
         volt: {

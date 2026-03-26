@@ -2,9 +2,28 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ─── Base Terminal Theme ───────────────────────────────────────────────── */
+/* ─── CSS Variables — Dark (default) ───────────────────────────────────── */
 :root {
   color-scheme: dark;
+  --t-bg:      10 10 15;
+  --t-surface: 15 15 26;
+  --t-border:  26 26 46;
+  --t-muted:   42 42 62;
+  --t-text:    200 211 232;
+  --t-dim:     90 99 128;
+  --t-accent:  0 212 255;
+}
+
+/* ─── CSS Variables — Light ─────────────────────────────────────────────── */
+html.light {
+  color-scheme: light;
+  --t-bg:      248 247 244;
+  --t-surface: 255 255 255;
+  --t-border:  216 221 230;
+  --t-muted:   238 241 246;
+  --t-text:    26 32 53;
+  --t-dim:     107 114 128;
+  --t-accent:  0 145 194;
 }
 
 html, body, #root {
@@ -16,8 +35,8 @@ html, body, #root {
 }
 
 body {
-  background-color: #0a0a0f;
-  color: #c8d3e8;
+  background-color: rgb(var(--t-bg));
+  color: rgb(var(--t-text));
   font-family: 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -25,13 +44,13 @@ body {
 
 /* ─── Scrollbar ─────────────────────────────────────────────────────────── */
 .scrollbar-thin::-webkit-scrollbar { width: 4px; }
-.scrollbar-thin::-webkit-scrollbar-track { background: #0a0a0f; }
-.scrollbar-thin::-webkit-scrollbar-thumb { background: #2a2a3e; border-radius: 2px; }
-.scrollbar-thin::-webkit-scrollbar-thumb:hover { background: #3a3a5e; }
+.scrollbar-thin::-webkit-scrollbar-track { background: rgb(var(--t-bg)); }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: rgb(var(--t-muted)); border-radius: 2px; }
+.scrollbar-thin::-webkit-scrollbar-thumb:hover { background: rgb(var(--t-dim)); }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #2a2a3e #0a0a0f;
+  scrollbar-color: rgb(var(--t-muted)) rgb(var(--t-bg));
 }
 
 /* ─── Line clamp ────────────────────────────────────────────────────────── */
@@ -42,7 +61,7 @@ body {
   overflow: hidden;
 }
 
-/* ─── Scanline overlay (subtle CRT effect) ──────────────────────────────── */
+/* ─── Scanline overlay (dark mode only) ─────────────────────────────────── */
 body::after {
   content: '';
   position: fixed;
@@ -57,9 +76,43 @@ body::after {
   pointer-events: none;
   z-index: 9999;
 }
+html.light body::after { display: none; }
 
 /* ─── Selection ─────────────────────────────────────────────────────────── */
 ::selection {
-  background: rgba(0, 212, 255, 0.2);
-  color: #00d4ff;
+  background: rgb(var(--t-accent) / 0.2);
+  color: rgb(var(--t-accent));
 }
+
+/* ─── Light mode: hardcoded gray class overrides ────────────────────────── */
+html.light .bg-black           { background-color: #ffffff !important; }
+html.light .bg-gray-950        { background-color: #f8f7f4 !important; }
+html.light .bg-gray-900        { background-color: #f0f2f6 !important; }
+html.light .bg-gray-800        { background-color: #e4e8ef !important; }
+html.light .bg-gray-700        { background-color: #d1d8e4 !important; }
+
+html.light .bg-black\/90       { background-color: rgba(248,247,244,0.97) !important; }
+html.light .bg-black\/80       { background-color: rgba(248,247,244,0.95) !important; }
+html.light .bg-gray-900\/50    { background-color: rgba(240,242,246,0.7)  !important; }
+html.light .bg-gray-900\/30    { background-color: rgba(240,242,246,0.5)  !important; }
+html.light .bg-gray-900\/20    { background-color: rgba(240,242,246,0.35) !important; }
+html.light .bg-gray-800\/50    { background-color: rgba(228,232,239,0.6)  !important; }
+
+html.light .text-white         { color: #111827 !important; }
+html.light .text-gray-100      { color: #1f2937 !important; }
+html.light .text-gray-200      { color: #374151 !important; }
+html.light .text-gray-300      { color: #4b5563 !important; }
+html.light .text-gray-400      { color: #6b7280 !important; }
+html.light .text-gray-500      { color: #9ca3af !important; }
+html.light .text-gray-600      { color: #d1d5db !important; }
+
+html.light .border-gray-800    { border-color: #dde2eb !important; }
+html.light .border-gray-700    { border-color: #c8d0de !important; }
+html.light .border-gray-600    { border-color: #b0bbc9 !important; }
+html.light .border-gray-800\/50{ border-color: rgba(221,226,235,0.6) !important; }
+
+html.light .hover\:bg-gray-900:hover { background-color: #e8ecf3 !important; }
+html.light .hover\:bg-gray-800:hover { background-color: #dde2eb !important; }
+
+html.light .divide-gray-800 > * + * { border-color: #dde2eb !important; }
+html.light .shadow-xl          { box-shadow: 0 10px 25px rgba(0,0,0,0.12), 0 4px 10px rgba(0,0,0,0.06) !important; }
