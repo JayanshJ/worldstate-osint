@@ -263,7 +263,7 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
                           <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
                             c.status === 'running' ? (c.health === 'unhealthy' ? 'bg-yellow-400' : 'bg-green-400') : 'bg-red-400'
                           }`} />
-                          <span className="text-white text-xs font-mono truncate">{c.name.replace(/^worldstate-osint-/, '')}</span>
+                          <span className="text-white text-xs font-mono truncate">{(c.name ?? c.id ?? 'unknown').replace(/^worldstate-osint-/, '')}</span>
                         </div>
                         <div className="flex items-center gap-4 flex-shrink-0 text-xs font-mono">
                           <span className="text-gray-500">{c.mem_mb}MB</span>
