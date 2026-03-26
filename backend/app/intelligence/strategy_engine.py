@@ -18,11 +18,14 @@ import json
 import logging
 import re
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 import google.generativeai as genai
 from openai import AsyncOpenAI
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from sqlalchemy import and_
 
 from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
@@ -243,6 +246,98 @@ async def _generate_with_openai(clusters: list[EventCluster]) -> list[dict]:
     return _parse_response(response.choices[0].message.content)
 
 
+# ─── Backtest Helpers ─────────────────────────────────────────────────────────
+
+# Map common asset identifiers to yfinance tickers
+_TICKER_MAP: dict[str, str] = {
+    "XAU/USD": "GC=F",   "XAG/USD": "SI=F",   "XPT/USD": "PL=F",
+    "UKOIL":   "BZ=F",   "CL=F":    "CL=F",   "NG=F":    "NG=F",
+    "ZW=F":    "ZW=F",   "ZC=F":    "ZC=F",   "ZS=F":    "ZS=F",
+    "BTC/USD": "BTC-USD","ETH/USD":  "ETH-USD",
+    "EUR/USD": "EURUSD=X","GBP/USD": "GBPUSD=X","USD/JPY": "JPY=X",
+    "USD/CHF": "CHF=X",  "USD/TRY": "TRY=X",  "USD/BRL": "BRL=X",
+    "USD/INR": "INR=X",  "USD/MXN": "MXN=X",  "DXY":     "DX-Y.NYB",
+}
+
+def _extract_ticker(specific_assets: list) -> Optional[str]:
+    """Extract a yfinance-compatible ticker from the first few specific_assets."""
+    for asset in (specific_assets or [])[:3]:
+        if not isinstance(asset, str):
+            continue
+        m = re.search(r'\(([^)]+)\)', asset)
+        raw = m.group(1).strip() if m else asset.strip()
+        # Direct map
+        if raw in _TICKER_MAP:
+            return _TICKER_MAP[raw]
+        # Crypto X/USD pattern
+        if re.match(r'^[A-Z]{2,5}/USD$', raw):
+            base = raw.split('/')[0]
+            return f"{base}-USD"
+        # Forex pattern
+        if re.match(r'^[A-Z]{3}/[A-Z]{3}$', raw) and '/' in raw:
+            return raw.replace('/', '') + '=X'
+        # Already looks like a ticker (2-6 uppercase letters, optionally =F/=X)
+        if re.match(r'^[A-Z]{1,6}(=[A-Z])?$', raw) or '=F' in raw or '=X' in raw:
+            return raw
+    return None
+
+
+def _fetch_price_sync(ticker: str) -> Optional[float]:
+    """Fetch latest price for a ticker synchronously (runs in thread)."""
+    try:
+        import yfinance as yf
+        t = yf.Ticker(ticker)
+        price = t.fast_info.get("last_price") or t.fast_info.get("previous_close")
+        return float(price) if price else None
+    except Exception:
+        return None
+
+
+async def _fetch_price(ticker: str) -> Optional[float]:
+    return await asyncio.to_thread(_fetch_price_sync, ticker)
+
+
+async def check_backtest_outcomes(db: AsyncSession) -> None:
+    """For strategies past 4h or 24h mark, fetch current price and record outcome."""
+    now = datetime.now(timezone.utc)
+
+    # Strategies needing 4h check
+    result = await db.execute(
+        select(MarketStrategy).where(
+            and_(
+                MarketStrategy.entry_ticker != None,
+                MarketStrategy.entry_price  != None,
+                MarketStrategy.outcome_4h   == None,
+                MarketStrategy.generated_at <= now - timedelta(hours=4),
+            )
+        ).limit(20)
+    )
+    for s in result.scalars().all():
+        price = await _fetch_price(s.entry_ticker)
+        if price and s.entry_price:
+            s.outcome_4h = round((price - s.entry_price) / s.entry_price * 100, 3)
+        s.checked_4h_at = now
+
+    # Strategies needing 24h check
+    result = await db.execute(
+        select(MarketStrategy).where(
+            and_(
+                MarketStrategy.entry_ticker != None,
+                MarketStrategy.entry_price  != None,
+                MarketStrategy.outcome_24h  == None,
+                MarketStrategy.generated_at <= now - timedelta(hours=24),
+            )
+        ).limit(20)
+    )
+    for s in result.scalars().all():
+        price = await _fetch_price(s.entry_ticker)
+        if price and s.entry_price:
+            s.outcome_24h = round((price - s.entry_price) / s.entry_price * 100, 3)
+        s.checked_24h_at = now
+
+    await db.commit()
+
+
 # ─── Main Strategy Generation ─────────────────────────────────────────────────
 
 async def generate_strategies(db: AsyncSession) -> list[MarketStrategy]:
@@ -315,12 +410,16 @@ async def generate_strategies(db: AsyncSession) -> list[MarketStrategy]:
             vol_ctx  = (sum(c.volatility for c in source_clusters) / len(source_clusters)) if source_clusters else avg_vol
             sent_ctx = (sum(c.sentiment  for c in source_clusters) / len(source_clusters)) if source_clusters else avg_sent
 
+            specific_assets = raw.get("specific_assets", [])[:6]
+            entry_ticker = _extract_ticker(specific_assets)
+            entry_price  = await _fetch_price(entry_ticker) if entry_ticker else None
+
             strategy = MarketStrategy(
                 title=str(raw.get("title", ""))[:200],
                 thesis=str(raw.get("thesis", "")),
                 rationale=raw.get("rationale", [])[:3],
                 asset_class=str(raw.get("asset_class", "COMMODITY"))[:50],
-                specific_assets=raw.get("specific_assets", [])[:6],
+                specific_assets=specific_assets,
                 direction=str(raw.get("direction", "NEUTRAL"))[:20],
                 timeframe=str(raw.get("timeframe", "SHORT"))[:20],
                 risk_level=str(raw.get("risk_level", "MODERATE"))[:20],
@@ -330,6 +429,8 @@ async def generate_strategies(db: AsyncSession) -> list[MarketStrategy]:
                 source_cluster_ids=source_ids,
                 related_regions=raw.get("related_regions", [])[:8],
                 expires_at=expires_at,
+                entry_ticker=entry_ticker,
+                entry_price=entry_price,
             )
             db.add(strategy)
             new_strategies.append(strategy)
@@ -365,6 +466,10 @@ def _serialize(s: MarketStrategy) -> dict:
         "generated_at": s.generated_at.isoformat() if s.generated_at else None,
         "expires_at": s.expires_at.isoformat() if s.expires_at else None,
         "is_active": s.is_active,
+        "entry_ticker": s.entry_ticker,
+        "entry_price":  s.entry_price,
+        "outcome_4h":   s.outcome_4h,
+        "outcome_24h":  s.outcome_24h,
     }
 
 
@@ -381,6 +486,8 @@ async def strategy_worker_loop() -> None:
         try:
             async with AsyncSessionLocal() as db:
                 await generate_strategies(db)
+            async with AsyncSessionLocal() as db:
+                await check_backtest_outcomes(db)
         except Exception as e:
             logger.error("Strategy worker error: %s", e, exc_info=True)
         await asyncio.sleep(INTERVAL_SECONDS)

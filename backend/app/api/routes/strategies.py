@@ -98,4 +98,8 @@ def _serialize(s: MarketStrategy) -> dict:
         "generated_at": s.generated_at.isoformat() if s.generated_at else None,
         "expires_at": s.expires_at.isoformat() if s.expires_at else None,
         "is_active": s.is_active,
+        "entry_ticker": s.entry_ticker,
+        "entry_price":  s.entry_price,
+        "outcome_4h":   s.outcome_4h,
+        "outcome_24h":  s.outcome_24h,
     }

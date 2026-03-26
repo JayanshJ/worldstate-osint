@@ -130,6 +130,10 @@ export interface MarketStrategy {
   generated_at:        string | null
   expires_at:          string | null
   is_active:           boolean
+  entry_ticker:        string | null
+  entry_price:         number | null
+  outcome_4h:          number | null
+  outcome_24h:         number | null
 }
 
 export const ASSET_CLASS_COLORS: Record<AssetClass, string> = {

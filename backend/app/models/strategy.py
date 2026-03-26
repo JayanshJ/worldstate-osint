@@ -37,3 +37,11 @@ class MarketStrategy(Base):
     related_regions: Mapped[list] = mapped_column(JSONB, default=list)
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Backtesting
+    entry_ticker:   Mapped[str | None]      = mapped_column(String(30))
+    entry_price:    Mapped[float | None]    = mapped_column(Float)
+    outcome_4h:     Mapped[float | None]    = mapped_column(Float)   # % change at 4h
+    outcome_24h:    Mapped[float | None]    = mapped_column(Float)   # % change at 24h
+    checked_4h_at:  Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    checked_24h_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))

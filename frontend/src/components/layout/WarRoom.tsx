@@ -15,6 +15,7 @@ import { StrategyFeed } from '@/components/strategies/StrategyFeed'
 import { SupplyChainView } from '@/components/supply-chain/SupplyChainView'
 import { AccountSettings } from '@/components/auth/AccountSettings'
 import { AdminPanel } from '@/components/admin/AdminPanel'
+import { OnboardingTour, useOnboarding } from '@/components/onboarding/OnboardingTour'
 import { useAlerts } from '@/hooks/useAlerts'
 import { cn } from '@/lib/utils'
 
@@ -50,6 +51,7 @@ export function WarRoom() {
   )
 
   const { unreadCount } = useAlerts()
+  const { show: showTour, complete: completeTour } = useOnboarding()
 
   const viewMode = pathToView(location)
 
@@ -269,6 +271,8 @@ export function WarRoom() {
       {adminOpen && (
         <AdminPanel onClose={() => setAdminOpen(false)} />
       )}
+
+      {showTour && <OnboardingTour onComplete={completeTour} />}
     </div>
   )
 }

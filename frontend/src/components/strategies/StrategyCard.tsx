@@ -1,4 +1,4 @@
-import { TrendingUp, TrendingDown, Shield, Minus, Clock, AlertTriangle, CheckCircle2, MapPin } from 'lucide-react'
+import { TrendingUp, TrendingDown, Shield, Minus, Clock, AlertTriangle, CheckCircle2, MapPin, FlaskConical } from 'lucide-react'
 import type {
   MarketStrategy,
   AssetClass,
@@ -78,6 +78,38 @@ function ConfidenceBar({ value }: { value: number }) {
     </div>
   )
 }
+
+// ─── Backtest Badge ───────────────────────────────────────────────────────────
+
+function BacktestBadge({ outcome, label, direction }: {
+  outcome: number | null
+  label: string
+  direction: string
+}) {
+  if (outcome === null) return (
+    <div className="flex items-center gap-1 text-[9px] font-mono text-terminal-dim/50">
+      <FlaskConical size={8} />
+      <span>{label} PENDING</span>
+    </div>
+  )
+
+  const isCorrect = (direction === 'LONG' && outcome > 0) || (direction === 'SHORT' && outcome < 0)
+  const color = isCorrect ? '#22c55e' : '#ef4444'
+  const sign  = outcome > 0 ? '+' : ''
+
+  return (
+    <div
+      className="flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded-sm border"
+      style={{ color, borderColor: `${color}40`, background: `${color}10` }}
+    >
+      <FlaskConical size={8} />
+      <span>{label}</span>
+      <span className="font-bold">{sign}{outcome.toFixed(2)}%</span>
+      <span>{isCorrect ? '✓' : '✗'}</span>
+    </div>
+  )
+}
+
 
 // ─── StrategyCard ─────────────────────────────────────────────────────────────
 
@@ -201,6 +233,19 @@ export function StrategyCard({ strategy, onClusterSelect }: Props) {
           </div>
           <ConfidenceBar value={strategy.confidence} />
         </div>
+
+        {/* Backtest outcomes */}
+        {(strategy.entry_ticker) && (
+          <div className="flex items-center gap-3 mt-2 mb-1">
+            <BacktestBadge outcome={strategy.outcome_4h ?? null}  label="4h"  direction={strategy.direction} />
+            <BacktestBadge outcome={strategy.outcome_24h ?? null} label="24h" direction={strategy.direction} />
+            {strategy.entry_price && (
+              <span className="text-[9px] font-mono text-terminal-dim/40">
+                entry {strategy.entry_ticker} @ {strategy.entry_price.toFixed(2)}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Regions + source clusters */}
         <div className="flex items-center justify-between mt-2">
