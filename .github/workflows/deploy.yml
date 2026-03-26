@@ -1,0 +1,65 @@
+name: Deploy to Hetzner
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2   # need previous commit to detect changed files
+
+      - name: Detect changed services
+        id: changes
+        run: |
+          CHANGED=$(git diff --name-only HEAD~1 HEAD)
+          echo "$CHANGED"
+
+          BACKEND=false
+          FRONTEND=false
+
+          echo "$CHANGED" | grep -q "^backend/"  && BACKEND=true
+          echo "$CHANGED" | grep -q "^frontend/" && FRONTEND=true
+
+          # If workflow itself changed, rebuild everything
+          echo "$CHANGED" | grep -q "^\.github/" && BACKEND=true && FRONTEND=true
+
+          echo "backend=$BACKEND"   >> $GITHUB_OUTPUT
+          echo "frontend=$FRONTEND" >> $GITHUB_OUTPUT
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host:     ${{ secrets.HETZNER_HOST }}
+          username: root
+          key:      ${{ secrets.HETZNER_SSH_KEY }}
+          script: |
+            set -e
+            cd ~/worldstate-osint
+
+            git pull origin main
+
+            BACKEND="${{ steps.changes.outputs.backend }}"
+            FRONTEND="${{ steps.changes.outputs.frontend }}"
+
+            if [ "$BACKEND" = "true" ] && [ "$FRONTEND" = "true" ]; then
+              echo "==> Rebuilding backend + frontend"
+              docker compose build api frontend
+              docker compose up -d api frontend
+            elif [ "$BACKEND" = "true" ]; then
+              echo "==> Rebuilding backend only"
+              docker compose build api
+              docker compose up -d api
+            elif [ "$FRONTEND" = "true" ]; then
+              echo "==> Rebuilding frontend only"
+              docker compose build frontend
+              docker compose up -d frontend
+            else
+              echo "==> No service changes detected — skipping rebuild"
+            fi
+
+            docker compose ps
