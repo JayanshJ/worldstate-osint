@@ -136,7 +136,7 @@ export const api = {
   signals: {
     list:    (signal_type?: string) =>
       req<import('@/types').MarketSignal[]>(`${BASE}/signals/`, signal_type ? { signal_type } : {}),
-    refresh: () => post<{ new_signals: number; ok: boolean }>(`${BASE}/signals/refresh`, {}),
+    refresh: () => post<{ ok: boolean; status: string; new_signals: number | null }>(`${BASE}/signals/refresh`, {}),
   },
 
   account: {

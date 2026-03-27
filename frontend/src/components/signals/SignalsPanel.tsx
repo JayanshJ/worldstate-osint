@@ -200,9 +200,15 @@ export function SignalsPanel() {
 
   const handleRefresh = async () => {
     setRefreshing(true)
+    setError(null)
     try {
+      // Refresh is async on the server — it kicks off a background job
       await api.signals.refresh()
-      await load()
+      // Poll every 5s for up to 45s waiting for new signals to appear
+      for (let i = 0; i < 9; i++) {
+        await new Promise(r => setTimeout(r, 5000))
+        await load()
+      }
     } catch (e: any) {
       setError(e.message)
     } finally {
