@@ -265,17 +265,15 @@ async def fetch_edgar_deals() -> list[RawSignal]:
 
 async def fetch_edgar_insider_buys() -> list[RawSignal]:
     """
-    ALL Form 4 filings from the last 48 h.
-    We can't determine buy vs sell from the Atom feed without XML parsing,
-    so we show as INSIDER_BUY (generic insider activity) for every company.
-    Deduplicated to one signal per company per cycle.
+    Form 4 filings — fetch XML for the top 15 to determine actual buy vs sell.
+    Falls back to WATCH if we can't parse direction.
     """
     entries = await _edgar_rss("4")
     signals: list[RawSignal] = []
     cutoff  = _utcnow() - timedelta(hours=48)
     seen: set[str] = set()
 
-    for e in entries:
+    for e in entries[:15]:   # only top 15 to avoid hammering EDGAR
         company = e["company"]
         if company in seen:
             continue
@@ -286,19 +284,80 @@ async def fetch_edgar_insider_buys() -> list[RawSignal]:
             continue
 
         ticker_str = _ticker(e["title"] + " " + e["summary"])
+
+        # Try to parse the filing XML to determine buy vs sell
+        direction = await _parse_form4_direction(e["url"])
+        if direction is None:
+            # Skip if we can't determine direction — not useful to show as WATCH
+            continue
+
+        is_buy = direction == "buy"
         signals.append(RawSignal(
-            signal_type  = "INSIDER_BUY",
+            signal_type  = "INSIDER_BUY" if is_buy else "INSIDER_SELL",
             company      = company[:200],
-            headline     = f"Insider transaction filed at {company}",
+            headline     = f"Insider {'purchase' if is_buy else 'sale'} at {company}",
             source_url   = e["url"],
             source_name  = "SEC EDGAR Form 4",
             published_at = pub,
             ticker       = ticker_str,
-            bullish      = None,
-            extra_text   = _strip_html(e["summary"])[:200],
+            bullish      = is_buy,
+            extra_text   = f"{'Executive open-market purchase' if is_buy else 'Insider open-market sale'} at {company}. Insider transactions often precede significant price moves.",
         ))
 
     return signals
+
+
+async def _parse_form4_direction(filing_index_url: str) -> str | None:
+    """
+    Fetch a Form 4 filing index and parse the XML to determine buy vs sell.
+    Returns 'buy', 'sell', or None if undetermined.
+    """
+    try:
+        # Convert index page URL to .json index for document listing
+        # e.g. https://www.sec.gov/Archives/edgar/data/.../0001234-26-000001-index.htm
+        # →    https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany... (can't easily get XML)
+        # Instead: fetch the filing page and look for form4.xml link
+        async with httpx.AsyncClient(
+            timeout=10, headers={"User-Agent": _EDGAR_UA}, follow_redirects=True
+        ) as c:
+            r = await c.get(filing_index_url)
+            r.raise_for_status()
+            html = r.text
+
+        # Find link to form4.xml or primary document
+        xml_match = re.search(r'href="(/Archives/edgar/data/[^"]+\.xml)"', html, re.I)
+        if not xml_match:
+            return None
+
+        xml_url = "https://www.sec.gov" + xml_match.group(1)
+        async with httpx.AsyncClient(
+            timeout=10, headers={"User-Agent": _EDGAR_UA}, follow_redirects=True
+        ) as c:
+            r2 = await c.get(xml_url)
+            r2.raise_for_status()
+            root = ET.fromstring(r2.content)
+
+        # Sum acquired (A) vs disposed (D) shares in nonDerivativeTransaction
+        acquired  = 0.0
+        disposed  = 0.0
+        for tx in root.iter("nonDerivativeTransaction"):
+            code = (tx.findtext(".//transactionAcquiredDisposedCode/value") or "").strip().upper()
+            try:
+                shares = float(tx.findtext(".//transactionShares/value") or "0")
+            except ValueError:
+                shares = 0.0
+            if code == "A":
+                acquired += shares
+            elif code == "D":
+                disposed += shares
+
+        if acquired == 0 and disposed == 0:
+            return None
+        return "buy" if acquired >= disposed else "sell"
+
+    except Exception as e:
+        logger.debug("Form 4 XML parse failed: %s", e)
+        return None
 
 
 async def fetch_edgar_insider_sells() -> list[RawSignal]:

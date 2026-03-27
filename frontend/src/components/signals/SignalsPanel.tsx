@@ -39,15 +39,16 @@ function parseAction(ai_summary: string | null): { action: Action | null; reason
   return { action: null, reason: ai_summary }
 }
 
-// Fallback action when Gemini hasn't enriched yet
+// Fallback action when Gemini hasn't enriched yet — use bullish field first
 function defaultAction(sig: MarketSignal): Action {
-  if (sig.signal_type === 'INSIDER_BUY')       return 'WATCH'
-  if (sig.signal_type === 'INSIDER_SELL')       return 'WATCH'
-  if (sig.signal_type === 'ANALYST_UPGRADE')    return 'BUY'
-  if (sig.signal_type === 'ANALYST_DOWNGRADE')  return 'SHORT'
-  if (sig.signal_type === 'EARNINGS_BEAT')      return 'BUY'
-  if (sig.signal_type === 'EARNINGS_MISS')      return 'SHORT'
-  if (sig.signal_type === 'DEAL')               return 'WATCH'
+  // bullish is set directly by the backend from signal type / 8-K item number
+  if (sig.bullish === true)  return 'BUY'
+  if (sig.bullish === false) return 'SHORT'
+  // Signal-type fallbacks for neutral/unknown
+  if (sig.signal_type === 'ANALYST_UPGRADE')   return 'BUY'
+  if (sig.signal_type === 'ANALYST_DOWNGRADE') return 'SHORT'
+  if (sig.signal_type === 'EARNINGS_BEAT')     return 'BUY'
+  if (sig.signal_type === 'EARNINGS_MISS')     return 'SHORT'
   return 'WATCH'
 }
 
