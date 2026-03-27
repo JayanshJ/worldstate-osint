@@ -17,7 +17,8 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.signal import MarketSignal
 
-router = APIRouter(dependencies=[Depends(get_current_user)])
+router       = APIRouter(dependencies=[Depends(get_current_user)])
+public_router = APIRouter()   # no auth — debug / status only
 logger = logging.getLogger(__name__)
 
 # Track whether a cycle is already running so we don't pile up requests
@@ -71,7 +72,7 @@ async def refresh_signals(background_tasks: BackgroundTasks):
     return {"ok": True, "status": "started", "new_signals": None}
 
 
-@router.get("/status")
+@public_router.get("/status")
 async def signals_status(db: Annotated[AsyncSession, Depends(get_db)]):
     """Returns signal counts by type for health checking."""
     try:
@@ -89,7 +90,7 @@ async def signals_status(db: Annotated[AsyncSession, Depends(get_db)]):
         return {"ok": False, "error": str(e), "cycle_running": _running}
 
 
-@router.get("/debug")
+@public_router.get("/debug")
 async def debug_signals():
     """
     Run each signal source and return counts + errors without saving to DB.

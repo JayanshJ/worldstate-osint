@@ -15,6 +15,7 @@ from app.api.routes import digest, watchlist
 from app.api.routes import server as server_routes
 from app.api.routes import live
 from app.api.routes import signals
+from app.api.routes.signals import public_router as signals_public_router
 from app.api.routes.metals import start_metals_background
 from app.core.config import get_settings
 from app.core.database import engine
@@ -84,6 +85,7 @@ app.include_router(digest.router,         prefix="/api/v1/digest",     tags=["di
 app.include_router(watchlist.router,      prefix="/api/v1/watchlist",  tags=["watchlist"])
 app.include_router(live.router,           prefix="/api/v1/live",       tags=["live"])
 app.include_router(signals.router,        prefix="/api/v1/signals",     tags=["signals"])
+app.include_router(signals_public_router, prefix="/api/v1/signals",     tags=["signals"])
 app.include_router(websocket.router,                                    tags=["websocket"])
 
 
