@@ -1,17 +1,14 @@
 """
 Market Signals Engine
 =====================
-Continuously monitors three live data streams for stock-moving events:
+Monitors live data streams for stock-moving events:
 
-  1. SEC EDGAR EFTS  — 8-K M&A filings (merger agreements, tender offers)
-  2. SEC EDGAR EFTS  — Form 4 insider transactions (open-market buys / sells)
-  3. Financial RSS   — Reuters / FT for analyst upgrades/downgrades, earnings,
-                       rumours, profit warnings
+  1. SEC EDGAR Atom RSS  — 8-K filings (M&A, material events)
+  2. SEC EDGAR Atom RSS  — Form 4 insider filings
+  3. Financial RSS       — CNBC, Yahoo Finance, MarketWatch, AP, NPR, Investopedia
 
-Each raw signal is enriched with a Gemini-generated one-line market impact
-summary and stored in `market_signals`.  Signals expire after 48 h.
-
-EDGAR API docs: https://efts.sec.gov/LATEST/search-index (public, no key)
+Each signal is AI-enriched with a Gemini 1-line market impact summary.
+Signals are deduplicated by URL hash and expire after 48 h.
 """
 
 import asyncio
@@ -19,14 +16,14 @@ import hashlib
 import logging
 import re
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 from email.utils import parsedate_to_datetime
+from typing import Optional
 
 import httpx
 import google.generativeai as genai
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -36,89 +33,123 @@ from app.models.signal import MarketSignal
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
-# ── EDGAR requires a descriptive User-Agent per their policy ─────────────────
+# ── EDGAR requires a descriptive User-Agent ───────────────────────────────────
 _EDGAR_UA = "WorldState-OSINT worldstate-bot/1.0 contact@worldstate.ai"
 
-# ── News RSS feeds to monitor for analyst/earnings/rumour signals ─────────────
+# ── Reliable financial RSS feeds ──────────────────────────────────────────────
 _NEWS_FEEDS = [
-    ("Reuters Business",   "https://feeds.reuters.com/reuters/businessNews"),
-    ("Reuters Finance",    "https://feeds.reuters.com/reuters/financialNews"),
-    ("FT Markets",         "https://www.ft.com/rss/home/uk"),
-    ("Yahoo Finance",      "https://finance.yahoo.com/rss/topstories"),
-    ("MarketWatch",        "https://feeds.marketwatch.com/marketwatch/topstories/"),
-    ("Seeking Alpha",      "https://seekingalpha.com/market_currents.xml"),
-    ("Investopedia",       "https://www.investopedia.com/feedbuilder/feed/getfeed/?feedName=rss_headline"),
+    ("CNBC Top",        "https://www.cnbc.com/id/100003114/device/rss/rss.html"),
+    ("CNBC Finance",    "https://www.cnbc.com/id/10000664/device/rss/rss.html"),
+    ("Yahoo Finance",   "https://finance.yahoo.com/rss/topstories"),
+    ("MarketWatch",     "https://feeds.marketwatch.com/marketwatch/topstories/"),
+    ("AP Business",     "https://feeds.apnews.com/rss/business"),
+    ("Investopedia",    "https://www.investopedia.com/feedbuilder/feed/getfeed/?feedName=rss_headline"),
+    ("Reuters Biz",     "https://feeds.reuters.com/reuters/businessNews"),
+    ("Bloomberg Mkt",   "https://feeds.bloomberg.com/markets/news.rss"),
 ]
 
-# ── Regex patterns ─────────────────────────────────────────────────────────────
+# ── Regex classifiers ─────────────────────────────────────────────────────────
 
 _UPGRADE_RE = re.compile(
-    r'(?:upgraded?|rais(?:ed?|es)|initiat(?:ed?|es)|resuming?)\s+(?:to\s+)?'
-    r'(?:buy|outperform|overweight|strong buy|accumulate|positive)',
+    r'\b(?:upgrad\w*|rais\w+\s+(?:to|rating)|initiat\w+\s+(?:at|with)\s+(?:buy|outperform|overweight))'
+    r'|(?:to\s+(?:buy|outperform|overweight|strong.buy|accumulate|positive)\s+from)',
     re.I,
 )
 _DOWNGRADE_RE = re.compile(
-    r'(?:downgrad(?:ed?|es)|lower(?:ed?|s)|cut(?:ting)?|reduc(?:ed?|es))\s+(?:to\s+)?'
-    r'(?:sell|underperform|underweight|neutral|hold|market perform)',
+    r'\b(?:downgrad\w*|lower\w+\s+(?:to|rating)|cut\s+(?:to|rating))'
+    r'|(?:to\s+(?:sell|underperform|underweight|neutral|hold|market.perform)\s+from)',
     re.I,
 )
 _EARNINGS_BEAT_RE = re.compile(
-    r'(?:beat[s]?|top[s]?|surpass(?:es)?|exceed[s]?|above\s+estimate|strong\s+quarter|record\s+(?:revenue|profit|earnings))',
+    r'\b(?:beat[s]?\s+(?:estimate|expectation|forecast|consensus)'
+    r'|top[s]?\s+estimate|surpass\w*\s+(?:estimate|expectation)'
+    r'|above\s+(?:estimate|expectation|consensus)'
+    r'|record\s+(?:revenue|profit|earnings|quarter)'
+    r'|strong\s+(?:quarter|results|earnings))',
     re.I,
 )
 _EARNINGS_MISS_RE = re.compile(
-    r'(?:miss(?:es)?|below\s+estimate|disappoint|profit\s+warning|cut[s]?\s+guidance|lower[s]?\s+guidance)',
+    r'\b(?:miss\w*\s+(?:estimate|expectation|forecast)'
+    r'|below\s+(?:estimate|expectation|consensus)'
+    r'|disappoint\w+\s+(?:quarter|result|earnings)'
+    r'|profit.warning|cut[s]?\s+(?:guidance|outlook|forecast)'
+    r'|lower[s]?\s+(?:guidance|outlook|forecast))',
+    re.I,
+)
+_DEAL_CONFIRMED_RE = re.compile(
+    r'\b(?:acqui(?:res?|red|sition)\s+\w'
+    r'|merger\s+(?:agreement|deal|with)'
+    r'|definitive\s+agreement'
+    r'|to\s+(?:acquire|buy|purchase)\s+\w'
+    r'|takeover\s+(?:bid|offer)'
+    r'|buyout\s+(?:deal|offer|firm)'
+    r'|going\s+private'
+    r'|\$[\d.]+\s*(?:billion|bn|B)\s+(?:deal|acquisition|merger)'
+    r'|tender\s+offer)',
     re.I,
 )
 _RUMOUR_RE = re.compile(
-    r'(?:report(?:s|ed|edly)|said\s+to|source[s]?\s+say|people?\s+familiar|considering|explore[s]?|weigh[s]?'
-    r'|in\s+talks|approach(?:ed|es)|bid\s+for|potential\s+(?:deal|merger|buyout|acquisition|takeover)|rumou?r)',
-    re.I,
-)
-_DEAL_RE = re.compile(
-    r'(?:acqui(?:res?|sition|red)|merger|takeover|buyout|deal|offer\s+for|purchase[ds]?\s+\w+\s+for|'
-    r'definitive\s+agreement|tender\s+offer|going\s+private|to\s+buy)',
-    re.I,
-)
-
-# Extract a dollar amount from text: "$4.2 billion", "$850M", "$12B"
-_AMOUNT_RE = re.compile(
-    r'\$\s*(\d+(?:\.\d+)?)\s*(billion|million|bn|mn|b|m)\b',
+    r'\b(?:report\w*(?:ly)?\s+(?:in\s+talks|considering|exploring|weighing|mulling)'
+    r'|said\s+to\s+(?:be|consider|explore|weigh)'
+    r'|sources?\s+(?:say|said|familiar)'
+    r'|people?\s+familiar\s+with'
+    r'|in\s+(?:talks|discussions)\s+(?:to\s+)?(?:acqui|buy|sell|merge)'
+    r'|potential\s+(?:deal|merger|buyout|acquisition|takeover|buyer)'
+    r'|approach\w+\s+(?:about|for|over)\s+(?:a\s+)?(?:deal|merger|acquisition)'
+    r'|bid\s+(?:approach|interest)\s+for)',
     re.I,
 )
 
-# Crude ticker extraction: "AAPL", "(TSLA)", "NYSE: NVDA"
-_TICKER_RE = re.compile(
-    r'(?:NYSE|NASDAQ|LSE|ASX):\s*([A-Z]{1,5})'
-    r'|\(([A-Z]{1,5})\)'
-    r'\b([A-Z]{2,5})\b(?=\s*(?:shares?|stock|Corp|Inc|Ltd|plc|SE|AG|NV))',
+_AMOUNT_RE  = re.compile(r'\$\s*(\d+(?:\.\d+)?)\s*(billion|bn|million|mn|[bm])\b', re.I)
+_TICKER_RE  = re.compile(
+    r'(?:NYSE|NASDAQ|AMEX):\s*([A-Z]{1,5})'
+    r'|\(([A-Z]{2,5})\)(?=\s*(?:,|\.|\s+(?:shares?|stock)))'
 )
 
+# 8-K item descriptions that signal M&A / material events
+_8K_MA_ITEMS = re.compile(
+    r'Item\s+(?:1\.01|1\.02|2\.01|2\.06|5\.02)',  # Material Definitive Agreement, Completion of Acquisition, Changes in Management
+    re.I,
+)
 
-# ── Data class ────────────────────────────────────────────────────────────────
 
 @dataclass
 class RawSignal:
-    signal_type: str
-    company:     str
-    headline:    str
-    source_url:  str
-    source_name: str
+    signal_type:  str
+    company:      str
+    headline:     str
+    source_url:   str
+    source_name:  str
     published_at: datetime
-    ticker:      Optional[str]       = None
-    bullish:     Optional[bool]      = None
-    magnitude:   Optional[float]     = None
-    extra_text:  str                 = ""   # fed to Gemini for context
+    ticker:       Optional[str]  = None
+    bullish:      Optional[bool] = None
+    magnitude:    Optional[float] = None
+    extra_text:   str            = ""
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── Utilities ─────────────────────────────────────────────────────────────────
 
 def _hash(url: str) -> str:
     return hashlib.sha256(url.encode()).hexdigest()
 
 
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _parse_date(s: str) -> datetime:
+    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%SZ"):
+        try:
+            return datetime.strptime(s.strip()[:19], fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            pass
+    try:
+        return parsedate_to_datetime(s).astimezone(timezone.utc)
+    except Exception:
+        return _utcnow()
+
+
 def _parse_amount_bn(text: str) -> Optional[float]:
-    """Extract first dollar amount from text and normalise to $B."""
     m = _AMOUNT_RE.search(text)
     if not m:
         return None
@@ -137,24 +168,15 @@ def _extract_ticker(text: str) -> Optional[str]:
     return next((g for g in m.groups() if g), None)
 
 
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+# ── EDGAR Atom RSS helpers ────────────────────────────────────────────────────
 
+_ATOM_NS = "http://www.w3.org/2005/Atom"
 
-def _parse_rfc822(date_str: str) -> datetime:
-    try:
-        return parsedate_to_datetime(date_str).astimezone(timezone.utc)
-    except Exception:
-        return _utcnow()
-
-
-# ── SEC EDGAR EFTS ────────────────────────────────────────────────────────────
-
-async def _efts_search(q: str, forms: str, startdt: str) -> list[dict]:
-    """Query EDGAR EFTS full-text search API and return source dicts."""
+async def _fetch_edgar_rss(form_type: str) -> list[dict]:
+    """Fetch EDGAR recent-filings Atom feed for a given form type."""
     url = (
-        "https://efts.sec.gov/LATEST/search-index"
-        f"?q={q}&forms={forms}&dateRange=custom&startdt={startdt}"
+        "https://www.sec.gov/cgi-bin/browse-edgar"
+        f"?action=getcurrent&type={form_type}&dateb=&owner=include&count=40&output=atom"
     )
     try:
         async with httpx.AsyncClient(
@@ -164,215 +186,202 @@ async def _efts_search(q: str, forms: str, startdt: str) -> list[dict]:
         ) as client:
             r = await client.get(url)
             r.raise_for_status()
-            data = r.json()
-            return data.get("hits", {}).get("hits", [])
+
+        root = ET.fromstring(r.content)
+        entries = []
+        for entry in root.findall(f"{{{_ATOM_NS}}}entry"):
+            title   = entry.findtext(f"{{{_ATOM_NS}}}title") or ""
+            updated = entry.findtext(f"{{{_ATOM_NS}}}updated") or ""
+            summary = entry.findtext(f"{{{_ATOM_NS}}}summary") or ""
+            link_el = entry.find(f"{{{_ATOM_NS}}}link")
+            link    = link_el.get("href", "") if link_el is not None else ""
+
+            # Title format: "company-name (form-type) - date"
+            company = title.split("(")[0].strip() if "(" in title else title.strip()
+
+            entries.append({
+                "company": company,
+                "title":   title,
+                "url":     link,
+                "updated": updated,
+                "summary": summary,
+            })
+        return entries
+    except ET.ParseError as e:
+        logger.warning("EDGAR RSS XML parse error (%s): %s", form_type, e)
+        return []
     except Exception as e:
-        logger.warning("EFTS search failed (%s): %s", url[:80], e)
+        logger.warning("EDGAR RSS fetch failed (%s): %s", form_type, e)
         return []
 
 
+# ── Signal fetchers ───────────────────────────────────────────────────────────
+
 async def fetch_edgar_deals() -> list[RawSignal]:
-    """8-K filings mentioning merger / acquisition agreements (last 3 days)."""
-    startdt = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
-    q_encoded = (
-        "%22Agreement+and+Plan+of+Merger%22+OR+%22merger+agreement%22"
-        "+OR+%22acquisition+agreement%22+OR+%22tender+offer%22"
-        "+OR+%22going-private%22+OR+%22definitive+agreement%22"
-    )
-    hits = await _efts_search(q_encoded, "8-K", startdt)
-
+    """8-K filings that mention M&A-related items (1.01, 2.01, etc.)."""
+    entries = await _fetch_edgar_rss("8-K")
     signals: list[RawSignal] = []
-    for h in hits[:20]:
-        src = h.get("_source", {})
-        company     = src.get("entity_name") or src.get("display_names", ["Unknown"])[0]
-        file_date   = src.get("file_date") or _utcnow().strftime("%Y-%m-%d")
-        accession   = h.get("_id", "")
-        acc_clean   = accession.replace("-", "")
-        cik_match   = re.search(r"(\d{10})", acc_clean)
-        cik         = cik_match.group(1) if cik_match else "0000000000"
-        filing_url  = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={cik}&type=8-K"
+    cutoff = _utcnow() - timedelta(hours=72)
 
-        # Use highlight snippet if available for magnitude extraction
-        snippet = " ".join(
-            h.get("highlight", {}).get("file_date", [])
-            + h.get("highlight", {}).get("period_of_report", [])
-        )
-        magnitude = _parse_amount_bn(snippet)
+    for e in entries:
+        summary = e["summary"]
+        # Filter: only 8-Ks with M&A/material item descriptions
+        has_ma_item = _8K_MA_ITEMS.search(summary) or _DEAL_CONFIRMED_RE.search(e["title"] + " " + summary)
+        if not has_ma_item:
+            continue
 
-        try:
-            pub = datetime.strptime(file_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-        except ValueError:
-            pub = _utcnow()
+        pub = _parse_date(e["updated"]) if e["updated"] else _utcnow()
+        if pub < cutoff:
+            continue
 
+        text = e["title"] + " " + summary
         signals.append(RawSignal(
             signal_type  = "DEAL",
-            company      = company.split(" (")[0].strip(),
-            headline     = f"{company.split(' (')[0].strip()} filed 8-K: Material Definitive Agreement / M&A",
-            source_url   = filing_url,
+            company      = e["company"][:200],
+            headline     = f"{e['company']} — 8-K Material Event Filing",
+            source_url   = e["url"],
             source_name  = "SEC EDGAR 8-K",
             published_at = pub,
             bullish      = True,
-            magnitude    = magnitude,
-            extra_text   = snippet,
+            magnitude    = _parse_amount_bn(text),
+            extra_text   = summary[:400],
         ))
     return signals
 
 
 async def fetch_edgar_insider_buys() -> list[RawSignal]:
-    """Form 4 filings with 'Open Market Purchase' — executive insider buying."""
-    startdt = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
-    hits = await _efts_search("%22Open+Market+Purchase%22", "4", startdt)
-
+    """Form 4 filings — recent insider transactions (all activity)."""
+    entries = await _fetch_edgar_rss("4")
     signals: list[RawSignal] = []
-    for h in hits[:30]:
-        src     = h.get("_source", {})
-        company = src.get("entity_name") or src.get("display_names", ["Unknown"])[0]
-        company = company.split(" (")[0].strip()
-        file_date = src.get("file_date") or _utcnow().strftime("%Y-%m-%d")
-        accession = h.get("_id", "")
+    cutoff = _utcnow() - timedelta(hours=48)
 
-        filing_url = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company={company.replace(' ', '+')}&type=4"
+    seen: set[str] = set()
+    for e in entries:
+        company = e["company"]
+        if company in seen:
+            continue  # one signal per company per cycle
+        seen.add(company)
 
-        snippet = " ".join(
-            h.get("highlight", {}).get("file_date", [])
-            + h.get("highlight", {}).get("period_of_report", [])
-        )
-        magnitude = _parse_amount_bn(snippet)
-        ticker    = _extract_ticker(snippet) or _extract_ticker(company)
+        pub = _parse_date(e["updated"]) if e["updated"] else _utcnow()
+        if pub < cutoff:
+            continue
 
-        try:
-            pub = datetime.strptime(file_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-        except ValueError:
-            pub = _utcnow()
-
+        ticker = _extract_ticker(e["title"] + " " + e["summary"])
         signals.append(RawSignal(
             signal_type  = "INSIDER_BUY",
-            company      = company,
-            headline     = f"Insider open-market purchase at {company}",
-            source_url   = filing_url,
+            company      = company[:200],
+            headline     = f"Insider transaction filed at {company}",
+            source_url   = e["url"],
             source_name  = "SEC EDGAR Form 4",
             published_at = pub,
             ticker       = ticker,
-            bullish      = True,
-            magnitude    = magnitude,
-            extra_text   = snippet,
+            bullish      = None,  # can't determine buy/sell without XML parsing
+            extra_text   = e["summary"][:200],
         ))
     return signals
 
 
 async def fetch_edgar_insider_sells() -> list[RawSignal]:
-    """Form 4 filings with 'Open Market Sale' — significant insider selling."""
-    startdt = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
-    hits = await _efts_search("%22Open+Market+Sale%22", "4", startdt)
-
-    signals: list[RawSignal] = []
-    for h in hits[:20]:
-        src     = h.get("_source", {})
-        company = (src.get("entity_name") or src.get("display_names", ["Unknown"])[0]).split(" (")[0].strip()
-        file_date = src.get("file_date") or _utcnow().strftime("%Y-%m-%d")
-
-        filing_url = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company={company.replace(' ', '+')}&type=4"
-        snippet    = " ".join(h.get("highlight", {}).get("file_date", []))
-        magnitude  = _parse_amount_bn(snippet)
-        ticker     = _extract_ticker(snippet) or _extract_ticker(company)
-
-        try:
-            pub = datetime.strptime(file_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-        except ValueError:
-            pub = _utcnow()
-
-        signals.append(RawSignal(
-            signal_type  = "INSIDER_SELL",
-            company      = company,
-            headline     = f"Insider open-market sale at {company}",
-            source_url   = filing_url,
-            source_name  = "SEC EDGAR Form 4",
-            published_at = pub,
-            ticker       = ticker,
-            bullish      = False,
-            magnitude    = magnitude,
-        ))
-    return signals
+    # Form 4 RSS doesn't distinguish buys from sells without XML parsing.
+    # We return empty here; the RSS approach above captures all insider activity.
+    return []
 
 
 # ── News RSS ──────────────────────────────────────────────────────────────────
 
-async def _fetch_rss(feed_name: str, feed_url: str) -> list[dict]:
-    """Fetch and parse an RSS 2.0 feed, return list of item dicts."""
+async def _fetch_rss_items(feed_name: str, feed_url: str) -> list[dict]:
+    """Fetch and parse an RSS 2.0 or Atom feed, returning normalized item dicts."""
     try:
         async with httpx.AsyncClient(
-            timeout=15,
+            timeout=12,
             follow_redirects=True,
-            headers={"User-Agent": "WorldState-OSINT/1.0"},
+            headers={
+                "User-Agent": "Mozilla/5.0 (compatible; WorldState-OSINT/1.0)",
+                "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
+            },
         ) as client:
             r = await client.get(feed_url)
             r.raise_for_status()
 
-        root = ET.fromstring(r.text)
-        items = []
-        # Handle both RSS 2.0 and Atom
-        ns = {"atom": "http://www.w3.org/2005/Atom"}
-        if root.tag == "{http://www.w3.org/2005/Atom}feed":
-            for entry in root.findall("atom:entry", ns):
-                title   = entry.findtext("atom:title", "", ns)
-                link_el = entry.find("atom:link", ns)
+        content = r.content
+        root = ET.fromstring(content)
+
+        items: list[dict] = []
+
+        # Detect Atom vs RSS
+        if root.tag == f"{{{_ATOM_NS}}}feed" or "atom" in root.tag.lower():
+            for entry in root.findall(f"{{{_ATOM_NS}}}entry"):
+                title   = entry.findtext(f"{{{_ATOM_NS}}}title") or ""
+                link_el = entry.find(f"{{{_ATOM_NS}}}link")
                 url     = link_el.get("href", "") if link_el is not None else ""
-                pub     = entry.findtext("atom:published", "", ns) or entry.findtext("atom:updated", "", ns)
-                summary = entry.findtext("atom:summary", "", ns) or entry.findtext("atom:content", "", ns)
-                items.append({"title": title, "url": url, "pub": pub, "summary": summary or ""})
+                updated = entry.findtext(f"{{{_ATOM_NS}}}updated") or entry.findtext(f"{{{_ATOM_NS}}}published") or ""
+                summary = entry.findtext(f"{{{_ATOM_NS}}}summary") or entry.findtext(f"{{{_ATOM_NS}}}content") or ""
+                items.append({"title": title, "url": url, "pub": updated, "summary": _strip_html(summary)})
         else:
+            # RSS 2.0
             for item in root.iter("item"):
                 title   = item.findtext("title") or ""
                 url     = item.findtext("link") or ""
                 pub     = item.findtext("pubDate") or ""
                 summary = item.findtext("description") or ""
-                items.append({"title": title, "url": url, "pub": pub, "summary": summary})
+                items.append({"title": title, "url": url, "pub": pub, "summary": _strip_html(summary)})
 
         return items
+
+    except ET.ParseError as e:
+        logger.debug("RSS XML parse error (%s): %s", feed_name, e)
+        return []
     except Exception as e:
-        logger.debug("RSS fetch failed (%s): %s", feed_url[:60], e)
+        logger.debug("RSS fetch failed (%s %s): %s", feed_name, feed_url[:50], e)
         return []
 
 
-def _classify_news_item(title: str, summary: str) -> Optional[str]:
-    """Return signal type or None if not a recognisable financial signal."""
+def _strip_html(text: str) -> str:
+    """Very light HTML tag removal for RSS description fields."""
+    return re.sub(r'<[^>]+>', ' ', text).strip()
+
+
+def _classify(title: str, summary: str) -> Optional[str]:
     text = f"{title} {summary}"
-    if _UPGRADE_RE.search(text):   return "ANALYST_UPGRADE"
-    if _DOWNGRADE_RE.search(text): return "ANALYST_DOWNGRADE"
-    if _EARNINGS_BEAT_RE.search(text): return "EARNINGS_BEAT"
-    if _EARNINGS_MISS_RE.search(text): return "EARNINGS_MISS"
-    if _DEAL_RE.search(text):      return "DEAL"
-    if _RUMOUR_RE.search(text):    return "RUMOR"
+    if _UPGRADE_RE.search(text):        return "ANALYST_UPGRADE"
+    if _DOWNGRADE_RE.search(text):      return "ANALYST_DOWNGRADE"
+    if _EARNINGS_BEAT_RE.search(text):  return "EARNINGS_BEAT"
+    if _EARNINGS_MISS_RE.search(text):  return "EARNINGS_MISS"
+    if _DEAL_CONFIRMED_RE.search(text): return "DEAL"
+    if _RUMOUR_RE.search(text):         return "RUMOR"
     return None
 
 
 async def fetch_news_signals() -> list[RawSignal]:
-    """Parse financial news RSS feeds for analyst/earnings/deal/rumour signals."""
-    tasks  = [_fetch_rss(name, url) for name, url in _NEWS_FEEDS]
-    result = await asyncio.gather(*tasks, return_exceptions=True)
+    """Parse financial news RSS feeds for stock-moving signals."""
+    tasks  = [_fetch_rss_items(name, url) for name, url in _NEWS_FEEDS]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
 
     signals: list[RawSignal] = []
     cutoff = _utcnow() - timedelta(hours=48)
+    seen_urls: set[str] = set()
 
-    for (feed_name, _), items in zip(_NEWS_FEEDS, result):
-        if isinstance(items, Exception):
+    for (feed_name, _), batch in zip(_NEWS_FEEDS, results):
+        if isinstance(batch, Exception):
+            logger.debug("Feed error (%s): %s", feed_name, batch)
             continue
-        for item in items:
-            title   = item.get("title", "")
+
+        for item in batch:
             url     = item.get("url", "")
-            summary = item.get("summary", "")
+            title   = item.get("title", "").strip()
+            summary = item.get("summary", "").strip()
             pub_str = item.get("pub", "")
 
-            if not url or not title:
+            if not url or not title or url in seen_urls:
                 continue
+            seen_urls.add(url)
 
-            sig_type = _classify_news_item(title, summary)
+            sig_type = _classify(title, summary)
             if not sig_type:
                 continue
 
-            # Parse published date
             try:
-                pub = _parse_rfc822(pub_str) if pub_str else _utcnow()
+                pub = _parse_date(pub_str) if pub_str else _utcnow()
             except Exception:
                 pub = _utcnow()
 
@@ -386,22 +395,16 @@ async def fetch_news_signals() -> list[RawSignal]:
                 bullish = False
 
             text = f"{title} {summary}"
-            ticker    = _extract_ticker(text)
-            magnitude = _parse_amount_bn(text)
-
-            # Crude company extraction from title
-            company = title.split(":")[0].strip() if ":" in title else title[:60].strip()
-
             signals.append(RawSignal(
                 signal_type  = sig_type,
-                company      = company,
+                company      = (title.split(":")[0] if ":" in title else title[:60]).strip(),
                 headline     = title,
                 source_url   = url,
                 source_name  = feed_name,
                 published_at = pub,
-                ticker       = ticker,
+                ticker       = _extract_ticker(text),
                 bullish      = bullish,
-                magnitude    = magnitude,
+                magnitude    = _parse_amount_bn(text),
                 extra_text   = summary[:400],
             ))
 
@@ -410,10 +413,9 @@ async def fetch_news_signals() -> list[RawSignal]:
 
 # ── AI Enrichment ─────────────────────────────────────────────────────────────
 
-_GEMINI_MODEL: Optional[genai.GenerativeModel] = None
+_GEMINI_MODEL = None
 
-
-def _get_gemini() -> Optional[genai.GenerativeModel]:
+def _get_gemini():
     global _GEMINI_MODEL
     if _GEMINI_MODEL is None and settings.google_api_key:
         genai.configure(api_key=settings.google_api_key)
@@ -421,24 +423,24 @@ def _get_gemini() -> Optional[genai.GenerativeModel]:
     return _GEMINI_MODEL
 
 
-_AI_ENRICH_PROMPT = """\
-You are a senior equity analyst. Given this market signal, write ONE sentence (max 25 words) \
-explaining the likely immediate effect on the stock / sector price. \
-Be specific: direction (up/down), magnitude (small/moderate/significant), and reason.
+_PROMPT = """\
+You are a senior equity analyst. Write ONE sentence (max 25 words) explaining \
+the likely immediate effect on the stock or sector price. Be specific: direction, \
+magnitude, and reason. No preamble, no quotes.
 
-Signal type : {signal_type}
-Company     : {company}
-Headline    : {headline}
-Context     : {context}
+Signal : {signal_type}
+Company: {company}
+News   : {headline}
+Context: {context}
 
-One-sentence market impact (no preamble, no quotes):"""
+One-sentence market impact:"""
 
 
 async def _ai_enrich(signal: RawSignal) -> Optional[str]:
     model = _get_gemini()
     if not model:
         return None
-    prompt = _AI_ENRICH_PROMPT.format(
+    prompt = _PROMPT.format(
         signal_type = signal.signal_type,
         company     = signal.company,
         headline    = signal.headline,
@@ -446,12 +448,8 @@ async def _ai_enrich(signal: RawSignal) -> Optional[str]:
     )
     try:
         loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(
-            None, lambda: model.generate_content(prompt)
-        )
-        text = response.text.strip()
-        # Remove any leading quotes Gemini sometimes adds
-        return text.strip('"').strip("'")
+        resp = await loop.run_in_executor(None, lambda: model.generate_content(prompt))
+        return resp.text.strip().strip('"').strip("'")
     except Exception as e:
         logger.debug("Gemini enrich failed: %s", e)
         return None
@@ -459,29 +457,26 @@ async def _ai_enrich(signal: RawSignal) -> Optional[str]:
 
 # ── Persistence ───────────────────────────────────────────────────────────────
 
-async def _persist_signals(db: AsyncSession, raw: list[RawSignal]) -> int:
-    """Deduplicate and persist new signals, return count inserted."""
+async def _persist(db: AsyncSession, raw: list[RawSignal]) -> int:
     now    = _utcnow()
     expiry = now + timedelta(hours=48)
     saved  = 0
 
     for r in raw:
         h = _hash(r.source_url)
-        existing = await db.execute(
-            select(MarketSignal).where(MarketSignal.source_hash == h)
-        )
-        if existing.scalar_one_or_none():
-            continue  # Already stored
+        exists = await db.execute(select(MarketSignal).where(MarketSignal.source_hash == h))
+        if exists.scalar_one_or_none():
+            continue
 
-        ai_summary = await _ai_enrich(r)
+        ai = await _ai_enrich(r)
 
-        sig = MarketSignal(
+        db.add(MarketSignal(
             source_hash  = h,
             signal_type  = r.signal_type,
             ticker       = r.ticker,
             company      = r.company[:200],
             headline     = r.headline[:500],
-            ai_summary   = ai_summary,
+            ai_summary   = ai,
             bullish      = r.bullish,
             magnitude    = r.magnitude,
             source_url   = r.source_url[:1000],
@@ -490,8 +485,7 @@ async def _persist_signals(db: AsyncSession, raw: list[RawSignal]) -> int:
             fetched_at   = now,
             expires_at   = expiry,
             is_active    = True,
-        )
-        db.add(sig)
+        ))
         saved += 1
 
     await db.commit()
@@ -501,11 +495,8 @@ async def _persist_signals(db: AsyncSession, raw: list[RawSignal]) -> int:
 # ── Public entry point ────────────────────────────────────────────────────────
 
 async def run_signals_cycle() -> int:
-    """
-    Fetch all signal sources in parallel, persist new ones, expire old ones.
-    Called by the background worker loop every 15 minutes.
-    """
-    deal_signals, insider_buy, insider_sell, news = await asyncio.gather(
+    """Fetch all signal sources in parallel, persist new signals, expire stale ones."""
+    results = await asyncio.gather(
         fetch_edgar_deals(),
         fetch_edgar_insider_buys(),
         fetch_edgar_insider_sells(),
@@ -514,21 +505,21 @@ async def run_signals_cycle() -> int:
     )
 
     all_signals: list[RawSignal] = []
-    for batch in (deal_signals, insider_buy, insider_sell, news):
+    for batch in results:
         if isinstance(batch, list):
             all_signals.extend(batch)
-        else:
-            logger.warning("Signal fetch batch error: %s", batch)
+        elif isinstance(batch, Exception):
+            logger.warning("Signal source error: %s", batch)
+
+    logger.info("Signals fetched: %d raw signals from all sources", len(all_signals))
 
     async with AsyncSessionLocal() as db:
-        # Expire stale signals
-        from sqlalchemy import update
         await db.execute(
             update(MarketSignal)
             .where(MarketSignal.expires_at < _utcnow())
             .values(is_active=False)
         )
-        count = await _persist_signals(db, all_signals)
+        count = await _persist(db, all_signals)
 
-    logger.info("Signals cycle: %d fetched, %d new persisted", len(all_signals), count)
+    logger.info("Signals cycle done — %d new persisted", count)
     return count

@@ -89,6 +89,42 @@ async def signals_status(db: Annotated[AsyncSession, Depends(get_db)]):
         return {"ok": False, "error": str(e), "cycle_running": _running}
 
 
+@router.get("/debug")
+async def debug_signals():
+    """
+    Run each signal source and return counts + errors without saving to DB.
+    Use this to diagnose why signals aren't appearing.
+    """
+    import traceback
+    from app.intelligence.signals_engine import (
+        fetch_edgar_deals,
+        fetch_edgar_insider_buys,
+        fetch_edgar_insider_sells,
+        fetch_news_signals,
+    )
+
+    results = {}
+
+    for name, coro in [
+        ("edgar_deals",      fetch_edgar_deals()),
+        ("edgar_insider_buy", fetch_edgar_insider_buys()),
+        ("edgar_insider_sell", fetch_edgar_insider_sells()),
+        ("news",             fetch_news_signals()),
+    ]:
+        try:
+            items = await coro
+            results[name] = {
+                "count":   len(items),
+                "sample":  [{"company": i.company, "headline": i.headline[:80], "type": i.signal_type}
+                            for i in items[:3]],
+                "error":   None,
+            }
+        except Exception as e:
+            results[name] = {"count": 0, "sample": [], "error": traceback.format_exc()[-500:]}
+
+    return results
+
+
 def _serialize(s: MarketSignal) -> dict:
     return {
         "id":           str(s.id),
