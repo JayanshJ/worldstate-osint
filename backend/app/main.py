@@ -14,6 +14,7 @@ from app.api.routes import admin
 from app.api.routes import digest, watchlist
 from app.api.routes import server as server_routes
 from app.api.routes import live
+from app.api.routes import signals
 from app.api.routes.metals import start_metals_background
 from app.core.config import get_settings
 from app.core.database import engine
@@ -26,6 +27,7 @@ from app.models.strategy import MarketStrategy  # noqa: F401 — registers table
 from app.models.supply_chain import SCCompany, SCEdge  # noqa: F401 — registers SC tables
 from app.models.organization import Organization  # noqa: F401 — registers org table with Base
 from app.models.user import User  # noqa: F401 — registers users table with Base
+from app.models.signal import MarketSignal  # noqa: F401 — registers market_signals table
 
 settings = get_settings()
 logging.basicConfig(level=settings.log_level)
@@ -81,6 +83,7 @@ app.include_router(research.router,       prefix="/api/v1/research",   tags=["re
 app.include_router(digest.router,         prefix="/api/v1/digest",     tags=["digest"])
 app.include_router(watchlist.router,      prefix="/api/v1/watchlist",  tags=["watchlist"])
 app.include_router(live.router,           prefix="/api/v1/live",       tags=["live"])
+app.include_router(signals.router,        prefix="/api/v1/signals",     tags=["signals"])
 app.include_router(websocket.router,                                    tags=["websocket"])
 
 

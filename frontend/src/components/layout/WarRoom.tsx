@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useLocation, useRoute } from 'wouter'
 import { AnimatePresence, motion } from 'framer-motion'
-import { GitBranch, Globe, LayoutDashboard, Zap } from 'lucide-react'
+import { Activity, GitBranch, Globe, LayoutDashboard, Zap } from 'lucide-react'
 import { Header } from './Header'
 import { StatsBar } from './StatsBar'
 import { Ticker } from '@/components/ticker/Ticker'
@@ -13,13 +13,14 @@ import { AlertPanel } from '@/components/alerts/AlertPanel'
 import { WorldMapView } from '@/components/map/WorldMapView'
 import { StrategyFeed } from '@/components/strategies/StrategyFeed'
 import { SupplyChainView } from '@/components/supply-chain/SupplyChainView'
+import { SignalsPanel } from '@/components/signals/SignalsPanel'
 import { AccountSettings } from '@/components/auth/AccountSettings'
 import { AdminPanel } from '@/components/admin/AdminPanel'
 import { OnboardingTour, useOnboarding } from '@/components/onboarding/OnboardingTour'
 import { useAlerts } from '@/hooks/useAlerts'
 import { cn } from '@/lib/utils'
 
-type ViewMode    = 'dashboard' | 'map' | 'alpha' | 'splc'
+type ViewMode    = 'dashboard' | 'map' | 'alpha' | 'splc' | 'signals'
 type MobilePanel = 'clusters' | 'feed'
 
 const VIEW_PATHS: Record<ViewMode, string> = {
@@ -27,12 +28,14 @@ const VIEW_PATHS: Record<ViewMode, string> = {
   map:       '/map',
   alpha:     '/alpha',
   splc:      '/splc',
+  signals:   '/signals',
 }
 
 function pathToView(path: string): ViewMode {
-  if (path.startsWith('/map'))   return 'map'
-  if (path.startsWith('/alpha')) return 'alpha'
-  if (path.startsWith('/splc'))  return 'splc'
+  if (path.startsWith('/map'))     return 'map'
+  if (path.startsWith('/alpha'))   return 'alpha'
+  if (path.startsWith('/splc'))    return 'splc'
+  if (path.startsWith('/signals')) return 'signals'
   return 'dashboard'
 }
 
@@ -119,10 +122,11 @@ export function WarRoom() {
         {/* View toggle — full width on mobile, border-left on desktop */}
         <div className="flex items-center gap-1 px-3 border-terminal-border bg-terminal-surface flex-1 md:flex-none md:border-l justify-center md:justify-start">
           {([
-            { mode: 'dashboard' as ViewMode, icon: LayoutDashboard, label: 'FEED'  },
-            { mode: 'map'       as ViewMode, icon: Globe,            label: 'MAP'   },
-            { mode: 'alpha'     as ViewMode, icon: Zap,              label: 'ALPHA' },
-            { mode: 'splc'      as ViewMode, icon: GitBranch,        label: 'SPLC'  },
+            { mode: 'dashboard' as ViewMode, icon: LayoutDashboard, label: 'FEED'    },
+            { mode: 'map'       as ViewMode, icon: Globe,            label: 'MAP'     },
+            { mode: 'alpha'     as ViewMode, icon: Zap,              label: 'ALPHA'   },
+            { mode: 'signals'   as ViewMode, icon: Activity,         label: 'SIGNALS' },
+            { mode: 'splc'      as ViewMode, icon: GitBranch,        label: 'SPLC'    },
           ] as const).map(({ mode, icon: Icon, label }) => (
             <button
               key={mode}
@@ -211,6 +215,17 @@ export function WarRoom() {
               className="flex-1 min-w-0 overflow-hidden"
             >
               <StrategyFeed onClusterSelect={openCluster} />
+            </motion.div>
+          ) : viewMode === 'signals' ? (
+            <motion.div
+              key="signals"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="flex-1 min-w-0 overflow-hidden"
+            >
+              <SignalsPanel />
             </motion.div>
           ) : viewMode === 'splc' ? (
             <motion.div

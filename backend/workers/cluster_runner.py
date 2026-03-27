@@ -8,6 +8,7 @@ import logging
 from app.core.config import get_settings
 from app.intelligence.cluster_engine import cluster_worker_loop
 from app.intelligence.strategy_engine import strategy_worker_loop
+from app.intelligence.signals_engine import run_signals_cycle
 
 settings = get_settings()
 logging.basicConfig(
@@ -16,11 +17,22 @@ logging.basicConfig(
 )
 
 
+async def signals_loop():
+    import asyncio as _a
+    while True:
+        try:
+            await run_signals_cycle()
+        except Exception as e:
+            logging.getLogger(__name__).exception("Signals cycle error: %s", e)
+        await _a.sleep(15 * 60)  # every 15 min
+
+
 async def main():
-    # Run cluster intelligence + strategy generation concurrently
+    # Run cluster intelligence, strategy generation, and signals concurrently
     await asyncio.gather(
         cluster_worker_loop(),
         strategy_worker_loop(),
+        signals_loop(),
     )
 
 

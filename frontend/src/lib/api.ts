@@ -133,6 +133,12 @@ export const api = {
     vessels:  () => req<VesselZone[]>(`${BASE}/live/vessels`),
   },
 
+  signals: {
+    list:    (signal_type?: string) =>
+      req<import('@/types').MarketSignal[]>(`${BASE}/signals/`, signal_type ? { signal_type } : {}),
+    refresh: () => post<{ new_signals: number; ok: boolean }>(`${BASE}/signals/refresh`, {}),
+  },
+
   account: {
     deleteMe: () => del('/auth/me'),
   },

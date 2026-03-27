@@ -168,6 +168,44 @@ export const RISK_COLORS: Record<RiskLevel, string> = {
   SPECULATIVE: '#ef4444',
 }
 
+// ─── Market Signals ───────────────────────────────────────────────────────
+
+export type SignalType =
+  | 'DEAL'
+  | 'INSIDER_BUY'
+  | 'INSIDER_SELL'
+  | 'ANALYST_UPGRADE'
+  | 'ANALYST_DOWNGRADE'
+  | 'EARNINGS_BEAT'
+  | 'EARNINGS_MISS'
+  | 'RUMOR'
+
+export interface MarketSignal {
+  id:           string
+  signal_type:  SignalType
+  ticker:       string | null
+  company:      string
+  headline:     string
+  ai_summary:   string | null
+  bullish:      boolean | null
+  magnitude:    number | null       // deal size in $B, price target %, etc.
+  source_url:   string
+  source_name:  string
+  published_at: string | null
+  expires_at:   string | null
+}
+
+export const SIGNAL_META: Record<SignalType, { label: string; color: string; icon: string }> = {
+  DEAL:               { label: 'M&A Deal',         color: '#3b82f6', icon: '🤝' },
+  INSIDER_BUY:        { label: 'Insider Buy',       color: '#22c55e', icon: '📈' },
+  INSIDER_SELL:       { label: 'Insider Sell',      color: '#ef4444', icon: '📉' },
+  ANALYST_UPGRADE:    { label: 'Analyst Upgrade',   color: '#10b981', icon: '⬆' },
+  ANALYST_DOWNGRADE:  { label: 'Analyst Downgrade', color: '#f97316', icon: '⬇' },
+  EARNINGS_BEAT:      { label: 'Earnings Beat',     color: '#22c55e', icon: '✓' },
+  EARNINGS_MISS:      { label: 'Earnings Miss',     color: '#ef4444', icon: '✗' },
+  RUMOR:              { label: 'Rumor / Report',    color: '#8b5cf6', icon: '◈' },
+}
+
 // ─── UI State ─────────────────────────────────────────────────────────────
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error'
