@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ExternalLink, RefreshCw, TrendingDown, TrendingUp, Minus } from 'lucide-react'
+import { ExternalLink, RefreshCw } from 'lucide-react'
 import { api } from '@/lib/api'
 import { MarketSignal, SIGNAL_META, SignalType } from '@/types'
 import { cn } from '@/lib/utils'
 
 // ── Filter tabs ───────────────────────────────────────────────────────────────
 
-const FILTERS: Array<{ label: string; value: SignalType | 'ALL' }> = [
+const FILTERS: Array<{ label: string; value: string }> = [
   { label: 'ALL',       value: 'ALL' },
   { label: 'DEALS',     value: 'DEAL' },
   { label: 'INSIDER',   value: 'INSIDER_BUY' },
@@ -15,175 +15,195 @@ const FILTERS: Array<{ label: string; value: SignalType | 'ALL' }> = [
   { label: 'RUMOURS',   value: 'RUMOR' },
 ]
 
-// Group INSIDER_BUY / INSIDER_SELL, and ANALYST_UPGRADE / ANALYST_DOWNGRADE,
-// and EARNINGS_BEAT / EARNINGS_MISS under their parent filter
-const FILTER_GROUPS: Partial<Record<string, SignalType[]>> = {
-  INSIDER_BUY:       ['INSIDER_BUY', 'INSIDER_SELL'],
-  ANALYST_UPGRADE:   ['ANALYST_UPGRADE', 'ANALYST_DOWNGRADE'],
-  EARNINGS_BEAT:     ['EARNINGS_BEAT', 'EARNINGS_MISS'],
+const FILTER_GROUPS: Record<string, SignalType[]> = {
+  INSIDER_BUY:     ['INSIDER_BUY', 'INSIDER_SELL'],
+  ANALYST_UPGRADE: ['ANALYST_UPGRADE', 'ANALYST_DOWNGRADE'],
+  EARNINGS_BEAT:   ['EARNINGS_BEAT', 'EARNINGS_MISS'],
+}
+
+// ── Action parsing ────────────────────────────────────────────────────────────
+
+type Action = 'BUY' | 'SHORT' | 'HOLD' | 'WATCH'
+
+const ACTION_STYLE: Record<Action, { bg: string; text: string; border: string }> = {
+  BUY:   { bg: 'rgba(34,197,94,0.15)',  text: '#22c55e', border: 'rgba(34,197,94,0.4)'  },
+  SHORT: { bg: 'rgba(239,68,68,0.15)',  text: '#ef4444', border: 'rgba(239,68,68,0.4)'  },
+  HOLD:  { bg: 'rgba(234,179,8,0.15)',  text: '#eab308', border: 'rgba(234,179,8,0.4)'  },
+  WATCH: { bg: 'rgba(139,92,246,0.15)', text: '#8b5cf6', border: 'rgba(139,92,246,0.4)' },
+}
+
+function parseAction(ai_summary: string | null): { action: Action | null; reason: string } {
+  if (!ai_summary) return { action: null, reason: '' }
+  const m = ai_summary.match(/^(BUY|SHORT|HOLD|WATCH)\s*[|:–-]\s*(.+)/i)
+  if (m) return { action: m[1].toUpperCase() as Action, reason: m[2].trim() }
+  return { action: null, reason: ai_summary }
+}
+
+// Fallback action when Gemini hasn't enriched yet
+function defaultAction(sig: MarketSignal): Action {
+  if (sig.signal_type === 'INSIDER_BUY')       return 'WATCH'
+  if (sig.signal_type === 'INSIDER_SELL')       return 'WATCH'
+  if (sig.signal_type === 'ANALYST_UPGRADE')    return 'BUY'
+  if (sig.signal_type === 'ANALYST_DOWNGRADE')  return 'SHORT'
+  if (sig.signal_type === 'EARNINGS_BEAT')      return 'BUY'
+  if (sig.signal_type === 'EARNINGS_MISS')      return 'SHORT'
+  if (sig.signal_type === 'DEAL')               return 'WATCH'
+  return 'WATCH'
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function relativeTime(iso: string | null): string {
   if (!iso) return ''
-  const diff = Date.now() - new Date(iso).getTime()
-  const m = Math.floor(diff / 60_000)
+  const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000)
   if (m < 1)  return 'just now'
   if (m < 60) return `${m}m ago`
   const h = Math.floor(m / 60)
-  if (h < 24) return `${h}h ago`
-  return `${Math.floor(h / 24)}d ago`
+  return h < 24 ? `${h}h ago` : `${Math.floor(h / 24)}d ago`
 }
 
 function formatMagnitude(sig: MarketSignal): string | null {
   if (!sig.magnitude) return null
-  if (sig.signal_type === 'DEAL') {
-    return sig.magnitude >= 1
-      ? `$${sig.magnitude.toFixed(1)}B`
-      : `$${(sig.magnitude * 1000).toFixed(0)}M`
-  }
-  return `${sig.magnitude > 0 ? '+' : ''}${sig.magnitude.toFixed(1)}%`
+  return sig.signal_type === 'DEAL'
+    ? sig.magnitude >= 1 ? `$${sig.magnitude.toFixed(1)}B` : `$${(sig.magnitude * 1000).toFixed(0)}M`
+    : `${sig.magnitude > 0 ? '+' : ''}${sig.magnitude.toFixed(1)}%`
 }
 
 // ── Signal Card ───────────────────────────────────────────────────────────────
 
 function SignalCard({ signal }: { signal: MarketSignal }) {
-  const meta      = SIGNAL_META[signal.signal_type]
-  const magnitude = formatMagnitude(signal)
-
-  const DirectionIcon =
-    signal.bullish === true  ? TrendingUp   :
-    signal.bullish === false ? TrendingDown :
-    Minus
-
-  const dirColor =
-    signal.bullish === true  ? 'text-green-400' :
-    signal.bullish === false ? 'text-red-400'   :
-    'text-terminal-dim'
+  const meta      = SIGNAL_META[signal.signal_type] ?? { label: signal.signal_type, color: '#aaa', icon: '◈' }
+  const { action, reason } = parseAction(signal.ai_summary)
+  const displayAction = action ?? defaultAction(signal)
+  const actionStyle   = ACTION_STYLE[displayAction]
+  const magnitude     = formatMagnitude(signal)
 
   return (
-    <div className="group border border-terminal-border bg-terminal-surface hover:border-terminal-accent/40 transition-colors rounded-none p-3 flex flex-col gap-2">
-      {/* Header row */}
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0 flex-1">
-          {/* Signal type badge */}
-          <span
-            className="flex-shrink-0 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-sm border"
-            style={{
-              color:            meta.color,
-              borderColor:      meta.color + '60',
-              backgroundColor:  meta.color + '15',
-            }}
-          >
-            {meta.icon} {meta.label.toUpperCase()}
-          </span>
+    <div className="flex flex-col border border-terminal-border bg-terminal-surface hover:border-terminal-accent/30 transition-colors p-0 overflow-hidden">
 
-          {/* Ticker if known */}
-          {signal.ticker && (
-            <span className="flex-shrink-0 text-[10px] font-mono font-bold text-terminal-accent bg-terminal-accent/10 px-1.5 py-0.5 rounded-sm">
-              {signal.ticker}
-            </span>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Direction icon */}
-          <DirectionIcon size={12} className={dirColor} />
-          {/* Magnitude */}
+      {/* Action banner — the most prominent element */}
+      <div
+        className="flex items-center justify-between px-3 py-2"
+        style={{ backgroundColor: actionStyle.bg, borderBottom: `1px solid ${actionStyle.border}` }}
+      >
+        <span
+          className="text-[13px] font-mono font-bold tracking-widest"
+          style={{ color: actionStyle.text }}
+        >
+          ● {displayAction}
+        </span>
+        <div className="flex items-center gap-2">
           {magnitude && (
-            <span className={cn('text-[10px] font-mono font-bold', dirColor)}>
+            <span className="text-[10px] font-mono font-bold" style={{ color: actionStyle.text }}>
               {magnitude}
             </span>
           )}
-          {/* Time */}
           <span className="text-[9px] font-mono text-terminal-dim">
             {relativeTime(signal.published_at)}
           </span>
         </div>
       </div>
 
-      {/* Company name */}
-      <p className="text-[10px] font-mono text-terminal-dim uppercase tracking-wide truncate">
-        {signal.company}
-      </p>
+      {/* Body */}
+      <div className="flex flex-col gap-1.5 px-3 py-2.5">
 
-      {/* Headline */}
-      <p className="text-[11px] text-terminal-text leading-snug line-clamp-2">
-        {signal.headline}
-      </p>
-
-      {/* AI impact summary */}
-      {signal.ai_summary && (
-        <div className="border-l-2 border-terminal-accent/40 pl-2">
-          <p className="text-[10px] text-terminal-accent/80 leading-snug italic">
-            {signal.ai_summary}
-          </p>
+        {/* Signal type + ticker */}
+        <div className="flex items-center gap-2">
+          <span
+            className="text-[8px] font-mono font-bold px-1.5 py-0.5 rounded-sm border"
+            style={{ color: meta.color, borderColor: meta.color + '50', backgroundColor: meta.color + '12' }}
+          >
+            {meta.icon} {meta.label}
+          </span>
+          {signal.ticker && (
+            <span className="text-[10px] font-mono font-bold text-terminal-accent bg-terminal-accent/10 px-1.5 py-0.5 rounded-sm">
+              {signal.ticker}
+            </span>
+          )}
+          <span className="text-[9px] font-mono text-terminal-dim ml-auto truncate max-w-[120px]">
+            {signal.source_name}
+          </span>
         </div>
-      )}
 
-      {/* Footer: source + link */}
-      <div className="flex items-center justify-between pt-0.5">
-        <span className="text-[9px] font-mono text-terminal-dim uppercase">
-          {signal.source_name}
-        </span>
-        <a
-          href={signal.source_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1 text-[9px] font-mono text-terminal-dim hover:text-terminal-accent transition-colors"
-          onClick={e => e.stopPropagation()}
-        >
-          <ExternalLink size={9} />
-          VIEW FILING
-        </a>
+        {/* Company */}
+        <p className="text-[9px] font-mono text-terminal-dim uppercase tracking-wide truncate">
+          {signal.company}
+        </p>
+
+        {/* Headline */}
+        <p className="text-[11px] text-terminal-text leading-snug line-clamp-2">
+          {signal.headline}
+        </p>
+
+        {/* AI reasoning */}
+        {reason ? (
+          <div className="mt-0.5 rounded-sm px-2 py-1.5"
+            style={{ backgroundColor: actionStyle.bg, border: `1px solid ${actionStyle.border}` }}>
+            <p className="text-[10px] leading-snug" style={{ color: actionStyle.text }}>
+              {reason}
+            </p>
+          </div>
+        ) : (
+          <p className="text-[9px] font-mono text-terminal-dim/50 italic">
+            AI analysis pending next cycle…
+          </p>
+        )}
+
+        {/* Footer */}
+        <div className="flex items-center justify-end pt-0.5">
+          <a
+            href={signal.source_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-[9px] font-mono text-terminal-dim hover:text-terminal-accent transition-colors"
+          >
+            <ExternalLink size={9} />
+            SOURCE
+          </a>
+        </div>
       </div>
     </div>
   )
 }
 
-// ── Stats bar ─────────────────────────────────────────────────────────────────
+// ── Stats strip ───────────────────────────────────────────────────────────────
 
-function SignalStats({ signals }: { signals: MarketSignal[] }) {
-  const counts = signals.reduce((acc, s) => {
-    acc[s.signal_type] = (acc[s.signal_type] ?? 0) + 1
+function StatsStrip({ signals }: { signals: MarketSignal[] }) {
+  const byAction = signals.reduce((acc, s) => {
+    const { action } = parseAction(s.ai_summary)
+    const a = action ?? defaultAction(s)
+    acc[a] = (acc[a] ?? 0) + 1
     return acc
   }, {} as Record<string, number>)
 
-  const bullish = signals.filter(s => s.bullish === true).length
-  const bearish = signals.filter(s => s.bullish === false).length
-
   return (
-    <div className="flex items-center gap-3 px-4 py-2 border-b border-terminal-border bg-terminal-bg text-[9px] font-mono">
-      <span className="text-terminal-dim">SIGNALS</span>
-      <span className="text-terminal-text font-bold">{signals.length}</span>
+    <div className="flex items-center gap-3 px-4 py-2 border-b border-terminal-border bg-terminal-bg text-[9px] font-mono flex-shrink-0">
+      <span className="text-terminal-dim">{signals.length} SIGNALS</span>
       <span className="text-terminal-border">|</span>
-      <span className="text-green-400">↑ {bullish} BULLISH</span>
-      <span className="text-red-400">↓ {bearish} BEARISH</span>
-      <span className="text-terminal-border ml-auto">|</span>
-      {Object.entries(counts).slice(0, 4).map(([type, count]) => (
-        <span key={type} style={{ color: SIGNAL_META[type as SignalType]?.color ?? '#aaa' }}>
-          {type.replace(/_/g, ' ')} {count}
-        </span>
+      {(['BUY','SHORT','HOLD','WATCH'] as Action[]).map(a => (
+        byAction[a] ? (
+          <span key={a} style={{ color: ACTION_STYLE[a].text }}>
+            {a} {byAction[a]}
+          </span>
+        ) : null
       ))}
     </div>
   )
 }
 
-// ── Main Panel ────────────────────────────────────────────────────────────────
+// ── Main panel ────────────────────────────────────────────────────────────────
 
 export function SignalsPanel() {
-  const [signals,     setSignals]     = useState<MarketSignal[]>([])
-  const [loading,     setLoading]     = useState(true)
-  const [refreshing,  setRefreshing]  = useState(false)
-  const [error,       setError]       = useState<string | null>(null)
-  const [activeFilter, setActiveFilter] = useState<string>('ALL')
+  const [signals,      setSignals]      = useState<MarketSignal[]>([])
+  const [loading,      setLoading]      = useState(true)
+  const [refreshing,   setRefreshing]   = useState(false)
+  const [error,        setError]        = useState<string | null>(null)
+  const [activeFilter, setActiveFilter] = useState('ALL')
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const load = useCallback(async () => {
     try {
-      const data = await api.signals.list()
-      setSignals(data)
+      setSignals(await api.signals.list())
       setError(null)
     } catch (e: any) {
       setError(e.message)
@@ -194,7 +214,7 @@ export function SignalsPanel() {
 
   useEffect(() => {
     load()
-    intervalRef.current = setInterval(load, 5 * 60 * 1000) // refresh every 5 min
+    intervalRef.current = setInterval(load, 5 * 60 * 1000)
     return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
   }, [load])
 
@@ -202,9 +222,7 @@ export function SignalsPanel() {
     setRefreshing(true)
     setError(null)
     try {
-      // Refresh is async on the server — it kicks off a background job
       await api.signals.refresh()
-      // Poll every 5s for up to 45s waiting for new signals to appear
       for (let i = 0; i < 9; i++) {
         await new Promise(r => setTimeout(r, 5000))
         await load()
@@ -216,24 +234,23 @@ export function SignalsPanel() {
     }
   }
 
-  // Apply filter
   const filtered = signals.filter(s => {
     if (activeFilter === 'ALL') return true
     const group = FILTER_GROUPS[activeFilter]
-    if (group) return group.includes(s.signal_type)
-    return s.signal_type === activeFilter
+    return group ? group.includes(s.signal_type) : s.signal_type === activeFilter
   })
 
   return (
     <div className="flex flex-col h-full bg-terminal-bg">
+
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-terminal-border flex-shrink-0">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <span className="text-[10px] font-mono font-bold text-terminal-accent tracking-widest">
             MARKET SIGNALS
           </span>
-          <span className="text-[9px] font-mono text-terminal-dim">
-            SEC EDGAR · NEWS FEEDS · ANALYST ACTIONS
+          <span className="text-[9px] font-mono text-terminal-dim hidden sm:block">
+            AI-RANKED · SEC EDGAR · NEWS FEEDS
           </span>
         </div>
         <button
@@ -242,11 +259,11 @@ export function SignalsPanel() {
           className="flex items-center gap-1.5 text-[9px] font-mono text-terminal-dim hover:text-terminal-accent transition-colors disabled:opacity-40"
         >
           <RefreshCw size={10} className={refreshing ? 'animate-spin' : ''} />
-          {refreshing ? 'FETCHING...' : 'REFRESH'}
+          {refreshing ? 'FETCHING…' : 'REFRESH'}
         </button>
       </div>
 
-      {/* Filter tabs */}
+      {/* Filters */}
       <div className="flex items-center gap-1 px-4 py-1.5 border-b border-terminal-border flex-shrink-0 overflow-x-auto">
         {FILTERS.map(f => (
           <button
@@ -265,44 +282,40 @@ export function SignalsPanel() {
       </div>
 
       {/* Stats */}
-      {!loading && signals.length > 0 && <SignalStats signals={filtered} />}
+      {!loading && filtered.length > 0 && <StatsStrip signals={filtered} />}
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center h-32 text-terminal-dim text-xs font-mono">
-            LOADING SIGNALS...
+            LOADING SIGNALS…
           </div>
         ) : error ? (
           <div className="flex items-center justify-center h-32 text-red-400 text-xs font-mono">
             ⚠ {error}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 gap-2">
+          <div className="flex flex-col items-center justify-center h-48 gap-3">
             <p className="text-terminal-dim text-xs font-mono">NO SIGNALS YET</p>
-            <p className="text-terminal-dim/60 text-[10px] font-mono">
-              SIGNALS POPULATE EVERY 15 MIN FROM SEC EDGAR + NEWS FEEDS
+            <p className="text-terminal-dim/50 text-[10px] font-mono text-center px-8">
+              Signals are fetched from SEC EDGAR and financial news every 15 min.
+              Click REFRESH to fetch now.
             </p>
-            <button
-              onClick={handleRefresh}
-              className="mt-2 text-[10px] font-mono text-terminal-accent hover:underline"
-            >
+            <button onClick={handleRefresh} className="text-[10px] font-mono text-terminal-accent hover:underline">
               FETCH NOW →
             </button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-px bg-terminal-border">
-            {filtered.map(signal => (
-              <SignalCard key={signal.id} signal={signal} />
-            ))}
+            {filtered.map(s => <SignalCard key={s.id} signal={s} />)}
           </div>
         )}
       </div>
 
       {/* Disclaimer */}
       <div className="flex-shrink-0 px-4 py-1.5 border-t border-terminal-border">
-        <p className="text-[8px] font-mono text-terminal-dim/50">
-          NOT FINANCIAL ADVICE · Sources: SEC EDGAR (public filings) · Reuters · FT · Yahoo Finance · MarketWatch · AI-enriched summaries may contain inaccuracies
+        <p className="text-[8px] font-mono text-terminal-dim/40">
+          NOT FINANCIAL ADVICE · AI recommendations are illustrative only · Always do your own due diligence
         </p>
       </div>
     </div>

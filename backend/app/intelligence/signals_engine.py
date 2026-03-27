@@ -430,11 +430,24 @@ def _gemini():
     return _MODEL
 
 _PROMPT = (
-    "You are a senior equity analyst. Write ONE sentence (max 25 words) explaining "
-    "the likely immediate stock/sector price effect. Be specific: direction, magnitude, reason. "
-    "No preamble, no quotes.\n\n"
-    "Signal: {type}\nCompany: {company}\nHeadline: {headline}\nContext: {ctx}\n\n"
-    "One-sentence market impact:"
+    "You are a senior equity trader at a hedge fund. Based on this market signal, give a clear "
+    "actionable trade recommendation.\n\n"
+    "Signal : {type}\n"
+    "Company: {company}\n"
+    "News   : {headline}\n"
+    "Context: {ctx}\n\n"
+    "Respond in EXACTLY this format (one line, no extra text):\n"
+    "ACTION | reason (max 20 words)\n\n"
+    "ACTION must be one of: BUY | SHORT | HOLD | WATCH\n"
+    "- BUY   = clear upside catalyst, enter long position\n"
+    "- SHORT = clear downside catalyst, consider short or put options\n"
+    "- HOLD  = existing holders stay, no new entry yet\n"
+    "- WATCH = developing situation, monitor before acting\n\n"
+    "Examples:\n"
+    "BUY | Insider cluster purchase signals Q2 beat — enter before earnings catalyst\n"
+    "SHORT | Profit warning + guidance cut likely triggers 10-15% drawdown\n"
+    "WATCH | M&A rumour unconfirmed — wait for official announcement before entry\n\n"
+    "Your recommendation:"
 )
 
 async def _enrich(sig: RawSignal) -> Optional[str]:
