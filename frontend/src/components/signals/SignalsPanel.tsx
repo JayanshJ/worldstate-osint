@@ -235,11 +235,19 @@ export function SignalsPanel() {
     }
   }
 
-  const filtered = signals.filter(s => {
-    if (activeFilter === 'ALL') return true
-    const group = FILTER_GROUPS[activeFilter]
-    return group ? group.includes(s.signal_type) : s.signal_type === activeFilter
-  })
+  const ACTION_ORDER: Record<string, number> = { BUY: 0, SHORT: 1, HOLD: 2, WATCH: 3 }
+
+  const filtered = signals
+    .filter(s => {
+      if (activeFilter === 'ALL') return true
+      const group = FILTER_GROUPS[activeFilter]
+      return group ? group.includes(s.signal_type) : s.signal_type === activeFilter
+    })
+    .sort((a, b) => {
+      const aAction = parseAction(a.ai_summary).action ?? defaultAction(a)
+      const bAction = parseAction(b.ai_summary).action ?? defaultAction(b)
+      return (ACTION_ORDER[aAction] ?? 9) - (ACTION_ORDER[bAction] ?? 9)
+    })
 
   return (
     <div className="flex flex-col h-full bg-terminal-bg">
