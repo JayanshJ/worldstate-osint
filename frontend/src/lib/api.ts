@@ -94,8 +94,14 @@ export const api = {
   },
 
   strategies: {
-    list:    ()  => req<MarketStrategy[]>(`${BASE}/strategies/`),
-    refresh: ()  => post<{ generated: number; ok: boolean }>(`${BASE}/strategies/refresh`, {}),
+    list:        ()  => req<MarketStrategy[]>(`${BASE}/strategies/`),
+    refresh:     ()  => post<{ generated: number; ok: boolean }>(`${BASE}/strategies/refresh`, {}),
+    performance: ()  => req<import('@/types').StrategyPerformance>(`${BASE}/strategies/performance`),
+  },
+
+  briefing: {
+    get:     () => req<import('@/types').MorningBriefing | null>(`${BASE}/briefing/`),
+    refresh: () => post<{ ok: boolean; briefing?: import('@/types').MorningBriefing }>(`${BASE}/briefing/refresh`, {}),
   },
 
   splc: {
@@ -211,6 +217,8 @@ export interface AlertWatch {
   last_fired_at:  string | null
   fire_count:     number
   channel:        string
+  email_address:  string | null
+  webhook_url:    string | null
 }
 
 export interface AlertWatchCreate {
@@ -221,6 +229,8 @@ export interface AlertWatchCreate {
   min_volatility?: number
   min_sources?:    number
   channel?:        string
+  email_address?:  string
+  webhook_url?:    string
 }
 
 export interface AlertFiring {

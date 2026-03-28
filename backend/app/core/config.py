@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     # ── Finnhub ────────────────────────────────────────────────────────────
     finnhub_api_key: str = ""
 
+    # ── Notifications ──────────────────────────────────────────────────────
+    resend_api_key: str = ""          # optional; enables email alert delivery
+    app_base_url:   str = "https://worldstate.io"
+
     # ── Social Credentials ─────────────────────────────────────────────────
     twitter_bearer_token: str = ""
     reddit_client_id: str = ""

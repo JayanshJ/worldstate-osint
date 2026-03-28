@@ -9,6 +9,7 @@ from app.core.config import get_settings
 from app.intelligence.cluster_engine import cluster_worker_loop
 from app.intelligence.strategy_engine import strategy_worker_loop
 from app.intelligence.signals_engine import run_signals_cycle
+from app.intelligence.briefing_engine import briefing_worker_loop
 
 settings = get_settings()
 logging.basicConfig(
@@ -28,11 +29,12 @@ async def signals_loop():
 
 
 async def main():
-    # Run cluster intelligence, strategy generation, and signals concurrently
+    # Run cluster intelligence, strategy generation, signals, and briefing concurrently
     await asyncio.gather(
         cluster_worker_loop(),
         strategy_worker_loop(),
         signals_loop(),
+        briefing_worker_loop(),
     )
 
 

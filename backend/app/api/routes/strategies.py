@@ -7,6 +7,7 @@ POST /api/v1/strategies/refresh  — trigger immediate strategy regeneration
 
 from typing import Annotated
 
+import sqlalchemy as sa
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -76,6 +77,65 @@ async def methodology():
                 "Nothing herein constitutes investment advice under the Investment Advisers Act of 1940."
             ),
         },
+    }
+
+
+@router.get("/performance")
+async def strategy_performance(db: Annotated[AsyncSession, Depends(get_db)]):
+    """Aggregate backtest hit-rate stats from all historical strategies that have outcomes."""
+    from sqlalchemy import func, case
+    from app.models.strategy import MarketStrategy
+
+    result = await db.execute(
+        select(
+            MarketStrategy.direction,
+            func.count(MarketStrategy.id).label("total"),
+            func.count(MarketStrategy.outcome_4h).label("with_4h"),
+            func.count(MarketStrategy.outcome_24h).label("with_24h"),
+            func.sum(
+                case((
+                    (MarketStrategy.direction == 'LONG',  MarketStrategy.outcome_4h > 0),
+                    (MarketStrategy.direction == 'SHORT', MarketStrategy.outcome_4h < 0),
+                ), else_=False).cast(sa.Integer)
+            ).label("hits_4h"),
+            func.sum(
+                case((
+                    (MarketStrategy.direction == 'LONG',  MarketStrategy.outcome_24h > 0),
+                    (MarketStrategy.direction == 'SHORT', MarketStrategy.outcome_24h < 0),
+                ), else_=False).cast(sa.Integer)
+            ).label("hits_24h"),
+        )
+        .where(MarketStrategy.entry_ticker != None)
+        .group_by(MarketStrategy.direction)
+    )
+    rows = result.fetchall()
+
+    by_direction = []
+    total_with_4h = total_hits_4h = total_with_24h = total_hits_24h = 0
+    for r in rows:
+        by_direction.append({
+            "direction":  r.direction,
+            "total":      r.total,
+            "with_4h":   r.with_4h,
+            "hits_4h":   r.hits_4h or 0,
+            "rate_4h":   round((r.hits_4h or 0) / r.with_4h * 100, 1) if r.with_4h else None,
+            "with_24h":  r.with_24h,
+            "hits_24h":  r.hits_24h or 0,
+            "rate_24h":  round((r.hits_24h or 0) / r.with_24h * 100, 1) if r.with_24h else None,
+        })
+        total_with_4h  += r.with_4h
+        total_hits_4h  += (r.hits_4h or 0)
+        total_with_24h += r.with_24h
+        total_hits_24h += (r.hits_24h or 0)
+
+    return {
+        "overall": {
+            "with_4h":  total_with_4h,
+            "rate_4h":  round(total_hits_4h / total_with_4h * 100, 1) if total_with_4h else None,
+            "with_24h": total_with_24h,
+            "rate_24h": round(total_hits_24h / total_with_24h * 100, 1) if total_with_24h else None,
+        },
+        "by_direction": by_direction,
     }
 
 

@@ -16,6 +16,8 @@ from app.api.routes import server as server_routes
 from app.api.routes import live
 from app.api.routes import signals
 from app.api.routes.signals import public_router as signals_public_router
+from app.api.routes import briefing as briefing_routes
+from app.models.briefing import MorningBriefing  # noqa: F401 — registers briefing table
 from app.api.routes.metals import start_metals_background
 from app.core.config import get_settings
 from app.core.database import engine
@@ -86,6 +88,7 @@ app.include_router(watchlist.router,      prefix="/api/v1/watchlist",  tags=["wa
 app.include_router(live.router,           prefix="/api/v1/live",       tags=["live"])
 app.include_router(signals.router,        prefix="/api/v1/signals",     tags=["signals"])
 app.include_router(signals_public_router, prefix="/api/v1/signals",     tags=["signals"])
+app.include_router(briefing_routes.router, prefix="/api/v1/briefing",   tags=["briefing"])
 app.include_router(websocket.router,                                    tags=["websocket"])
 
 

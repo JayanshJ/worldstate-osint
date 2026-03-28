@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { RefreshCw, TrendingUp, Loader2, Zap, BarChart3, AlertTriangle, X } from 'lucide-react'
 import { api } from '@/lib/api'
-import type { MarketStrategy, AssetClass } from '@/types'
+import type { MarketStrategy, AssetClass, StrategyPerformance } from '@/types'
 import { ASSET_CLASS_COLORS } from '@/types'
 import { useWebSocket } from '@/context/WebSocketContext'
 import { StrategyCard } from './StrategyCard'
@@ -50,6 +50,36 @@ function SentimentGauge({ label, value, min = -1, max = 1, isVol = false }: {
   )
 }
 
+// ─── Win Rate Strip ───────────────────────────────────────────────────────────
+
+function WinRateStrip({ perf }: { perf: StrategyPerformance }) {
+  const { overall } = perf
+  if (!overall.with_4h && !overall.with_24h) return null
+  const r4  = overall.rate_4h
+  const r24 = overall.rate_24h
+  const color4  = r4  === null ? '#4b5563' : r4  >= 55 ? '#22c55e' : r4  >= 45 ? '#eab308' : '#ef4444'
+  const color24 = r24 === null ? '#4b5563' : r24 >= 55 ? '#22c55e' : r24 >= 45 ? '#eab308' : '#ef4444'
+  return (
+    <div className="flex items-center gap-4 px-4 py-2 border-b border-terminal-border bg-terminal-surface/50 text-[9px] font-mono">
+      <span className="text-terminal-dim tracking-widest">BACKTEST</span>
+      {r4 !== null && (
+        <span>
+          <span className="text-terminal-dim">4H </span>
+          <span style={{ color: color4 }} className="font-bold">{r4.toFixed(0)}%</span>
+          <span className="text-terminal-dim"> ({overall.with_4h} tracked)</span>
+        </span>
+      )}
+      {r24 !== null && (
+        <span>
+          <span className="text-terminal-dim">24H </span>
+          <span style={{ color: color24 }} className="font-bold">{r24.toFixed(0)}%</span>
+          <span className="text-terminal-dim"> ({overall.with_24h} tracked)</span>
+        </span>
+      )}
+    </div>
+  )
+}
+
 // ─── StrategyFeed ─────────────────────────────────────────────────────────────
 
 interface Props {
@@ -62,6 +92,7 @@ export function StrategyFeed({ onClusterSelect }: Props) {
   const [refreshing,     setRefreshing]     = useState(false)
   const [activeFilter,   setActiveFilter]   = useState<FilterTab>('ALL')
   const [lastUpdated,    setLastUpdated]    = useState<Date | null>(null)
+  const [performance,    setPerformance]    = useState<StrategyPerformance | null>(null)
   const [disclaimerDismissed, setDisclaimerDismissed] = useState(
     () => sessionStorage.getItem('strategy_disclaimer_dismissed') === '1'
   )
@@ -71,12 +102,12 @@ export function StrategyFeed({ onClusterSelect }: Props) {
   // ── Initial fetch ──────────────────────────────────────────────────────────
   useEffect(() => {
     api.strategies.list()
-      .then(data => {
-        setStrategies(data)
-        if (data.length) setLastUpdated(new Date())
-      })
+      .then(data => { setStrategies(data); if (data.length) setLastUpdated(new Date()) })
       .catch(() => {})
       .finally(() => setLoading(false))
+    api.strategies.performance()
+      .then(setPerformance)
+      .catch(() => {})
   }, [])
 
   // ── Real-time WebSocket updates ────────────────────────────────────────────
@@ -200,6 +231,9 @@ export function StrategyFeed({ onClusterSelect }: Props) {
           </div>
         )}
 
+        {/* Win rate strip */}
+        {performance && <WinRateStrip perf={performance} />}
+
         {/* Filter tabs */}
         <div className="flex items-center gap-0 px-4 pb-0 overflow-x-auto scrollbar-none">
           {FILTER_TABS.map(tab => {
@@ -293,7 +327,7 @@ export function StrategyFeed({ onClusterSelect }: Props) {
         <div className="flex-shrink-0 border-t border-terminal-border px-4 py-2 bg-terminal-surface/30 flex items-center gap-2">
           <AlertTriangle size={9} className="text-amber-500/60 flex-shrink-0" />
           <p className="font-mono text-[9px] text-terminal-dim/60">
-            AI research only · Not financial advice · Not backtested · Refreshes every 15 min
+            AI research only · Not financial advice · Live backtested · Refreshes every 15 min
           </p>
         </div>
       )}

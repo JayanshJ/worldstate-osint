@@ -7,6 +7,7 @@ import type { RawArticle, WatchlistEntity } from '@/types'
 import { cn, formatAbsTime } from '@/lib/utils'
 import { useTimezone } from '@/context/TimezoneContext'
 import { SmartDigest } from './SmartDigest'
+import { MorningBriefing } from './MorningBriefing'
 import { api } from '@/lib/api'
 
 // ─── Constants ─────────────────────────────────────────────────────────────
@@ -319,6 +320,8 @@ export function LiveFeed() {
 
   return (
     <div className="flex flex-col h-full">
+      <MorningBriefing />
+
       {/* Panel header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-terminal-border flex-shrink-0">
         <Radio size={11} className="text-green-400 animate-pulse" />

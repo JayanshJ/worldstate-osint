@@ -270,12 +270,14 @@ function WatchesTab({
 // ─── Create Watch Form ────────────────────────────────────────────────────
 
 function CreateWatchForm({ onCreate }: { onCreate: (data: AlertWatchCreate) => Promise<void> }) {
-  const [name, setName]         = useState('')
-  const [keywords, setKeywords] = useState('')
-  const [entities, setEntities] = useState('')
-  const [minVolt, setMinVolt]   = useState('0.4')
-  const [saving, setSaving]     = useState(false)
-  const [error, setError]       = useState('')
+  const [name, setName]               = useState('')
+  const [keywords, setKeywords]       = useState('')
+  const [entities, setEntities]       = useState('')
+  const [minVolt, setMinVolt]         = useState('0.4')
+  const [email, setEmail]             = useState('')
+  const [webhookUrl, setWebhookUrl]   = useState('')
+  const [saving, setSaving]           = useState(false)
+  const [error, setError]             = useState('')
 
   const handleSubmit = async () => {
     if (!name.trim()) { setError('Name required'); return }
@@ -290,6 +292,8 @@ function CreateWatchForm({ onCreate }: { onCreate: (data: AlertWatchCreate) => P
         keywords: kws.length ? kws : undefined,
         entities: ents.length ? ents : undefined,
         min_volatility: parseFloat(minVolt) || 0,
+        email_address: email.trim() || undefined,
+        webhook_url: webhookUrl.trim() || undefined,
       })
     } catch (e) {
       setError(String(e))
@@ -314,6 +318,8 @@ function CreateWatchForm({ onCreate }: { onCreate: (data: AlertWatchCreate) => P
         />
         <span className="text-[9px] font-mono text-terminal-dim">{parseFloat(minVolt).toFixed(2)}</span>
       </div>
+      <Field label="Email alerts (optional)" value={email} onChange={setEmail} placeholder="you@example.com" />
+      <Field label="Webhook URL (optional)" value={webhookUrl} onChange={setWebhookUrl} placeholder="https://hooks.slack.com/..." />
       <button
         onClick={handleSubmit}
         disabled={saving}

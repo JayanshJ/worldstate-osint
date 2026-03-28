@@ -36,6 +36,10 @@ class AlertWatch(Base):
     # Notification channel: "websocket" | "browser"
     channel:         Mapped[str] = mapped_column(String(50), default="websocket")
 
+    # Optional delivery channels
+    email_address:   Mapped[str | None] = mapped_column(String(255), nullable=True)
+    webhook_url:     Mapped[str | None] = mapped_column(String(500), nullable=True)
+
     firings: Mapped[list["AlertFiring"]] = relationship(back_populates="watch", lazy="dynamic")
 
 

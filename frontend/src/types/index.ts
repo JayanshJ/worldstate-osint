@@ -206,6 +206,48 @@ export const SIGNAL_META: Record<SignalType, { label: string; color: string; ico
   RUMOR:              { label: 'Rumor / Report',    color: '#8b5cf6', icon: '◈' },
 }
 
+// ─── Morning Briefing ─────────────────────────────────────────────────────
+
+export interface MorningBriefing {
+  id:           string
+  date:         string
+  headline:     string
+  tldr:         string
+  top_events:   Array<{
+    title:      string
+    summary:    string
+    volatility: number
+    regions:    string[]
+  }>
+  trade_setups: Array<{
+    direction:  string
+    asset:      string
+    thesis:     string
+    timeframe:  string
+  }>
+  macro_theme:  string
+  generated_at: string | null
+}
+
+export interface StrategyPerformance {
+  overall: {
+    with_4h:  number
+    rate_4h:  number | null
+    with_24h: number
+    rate_24h: number | null
+  }
+  by_direction: Array<{
+    direction: string
+    total:     number
+    with_4h:   number
+    hits_4h:   number
+    rate_4h:   number | null
+    with_24h:  number
+    hits_24h:  number
+    rate_24h:  number | null
+  }>
+}
+
 // ─── UI State ─────────────────────────────────────────────────────────────
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error'

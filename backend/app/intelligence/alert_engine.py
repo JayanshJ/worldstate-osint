@@ -8,6 +8,7 @@ cluster. If a watch matches and hasn't fired in the last N minutes, it fires:
   3. Updates watch.last_fired_at + fire_count
 """
 
+import asyncio
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -136,6 +137,30 @@ async def evaluate_alerts(cluster_id: str) -> None:
             )
 
             await publish_event(CHANNEL_ALERT, payload)
+
+            # ── Out-of-band delivery ──────────────────────────────────────
+            if watch.email_address:
+                from app.core.email import send_email, _alert_html
+                subject = f"⚡ Alert: {watch.name} — {cluster.label or 'Intelligence Cluster'}"
+                html    = _alert_html(
+                    watch_name=watch.name,
+                    cluster_label=cluster.label or "",
+                    bullets=cluster.summary_bullets or [],
+                    volatility=cluster.volatility,
+                    base_url=settings.app_base_url,
+                )
+                asyncio.create_task(send_email(watch.email_address, subject, html))
+
+            if watch.webhook_url:
+                import httpx as _httpx
+                async def _post_webhook(url: str, body: dict) -> None:
+                    try:
+                        async with _httpx.AsyncClient(timeout=8) as _c:
+                            await _c.post(url, json=body)
+                    except Exception as _e:
+                        logger.warning("Webhook delivery failed: %s", _e)
+                asyncio.create_task(_post_webhook(watch.webhook_url, payload))
+
             logger.info(
                 "Alert fired: watch=%s cluster=%s volt=%.2f",
                 watch.name, cluster_id[:8], cluster.volatility,
