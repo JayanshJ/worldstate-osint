@@ -74,8 +74,11 @@ async def _fetch_yahoo(ticker: str, client: httpx.AsyncClient, key: str, fmt: st
     r = await client.get(url, headers={**HEADERS, "Accept": "application/json"}, timeout=10, follow_redirects=True)
     r.raise_for_status()
     result = r.json()["chart"]["result"][0]
-    current = float(result["meta"]["regularMarketPrice"])
-    change  = _intraday_change(current, key)
+    meta    = result["meta"]
+    current = float(meta["regularMarketPrice"])
+    # Use Yahoo's own reported daily % change — far more reliable than first-fetch tracking
+    chp = meta.get("regularMarketChangePercent")
+    change = round(float(chp), 2) if chp is not None else _intraday_change(current, key)
     _history[key].append({"t": datetime.now(timezone.utc).isoformat(), "p": current})
     return {"price": _fmt_price(current, fmt), "change": change, "raw": current}
 
@@ -86,9 +89,10 @@ async def _fetch_gold_api(symbol: str, client: httpx.AsyncClient, key: str, fmt:
     r.raise_for_status()
     data    = r.json()
     current = float(data["price"])
-    change  = _intraday_change(current, key)
+    # gold-api.com returns chp = daily % change vs previous close — use it directly
+    chp = data.get("chp")
+    change = round(float(chp), 2) if chp is not None else _intraday_change(current, key)
 
-    # Append to rolling history
     _history[key].append({
         "t": datetime.now(timezone.utc).isoformat(),
         "p": current,

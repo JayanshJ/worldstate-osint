@@ -39,7 +39,10 @@ function fmtAxis(v: number, key: string) {
 }
 
 function fmtTime(iso: string, range: Range, tz: string) {
-  const d = new Date(iso)
+  // Bare date strings (e.g. "2026-03-28" from stooq) are UTC midnight — append noon
+  // to prevent timezone rollback to the previous day in local display
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? `${iso}T12:00:00` : iso
+  const d = new Date(normalized)
   if (range === '1w' || range === '1m')
     return d.toLocaleDateString('en-US', { timeZone: tz, month: 'short', day: 'numeric' })
   return d.toLocaleTimeString('en-US', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false })
@@ -316,7 +319,11 @@ export function CommodityChart({ commodity, onClose }: Props) {
     return () => window.removeEventListener('keydown', h)
   }, [onClose])
 
-  const change = data?.change ?? commodity.change
+  // Compute % from the actual range shown in the chart (open = first point, current = last)
+  // This makes the % always match what the chart is displaying, regardless of range
+  const change = data && data.open > 0
+    ? +((data.current - data.open) / data.open * 100).toFixed(2)
+    : commodity.change
   const isUp = change !== null && change >= 0
   const chgColor = change === null ? '#4b5563' : isUp ? '#4ade80' : '#f87171'
 
