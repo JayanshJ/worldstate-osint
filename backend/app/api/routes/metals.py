@@ -32,6 +32,14 @@ _STOOQ: dict[str, str] = {
     "wti":      "@cl.us",   # WTI crude oil continuous futures on stooq
 }
 
+# Yahoo Finance tickers for intraday history pre-fill on startup
+_YAHOO_INTRADAY: dict[str, str] = {
+    "gold":     "GC=F",
+    "silver":   "SI=F",
+    "platinum": "PL=F",
+    "wti":      "CL=F",
+}
+
 # In-memory spot cache
 _cache: dict = {key: {"price": "···", "change": None, "raw": 0.0} for key, *_ in _COMMODITIES}
 _cache["fetched_at"] = 0.0
@@ -138,8 +146,36 @@ async def _background_loop() -> None:
         await asyncio.sleep(_CACHE_TTL)
 
 
+async def _prefill_history(key: str, client: httpx.AsyncClient) -> None:
+    """Pre-populate the intraday buffer from Yahoo Finance 1m chart on startup.
+
+    Without this, a freshly started server has 0–1 data points and all
+    intraday charts render as a flat horizontal line.
+    """
+    ticker = _YAHOO_INTRADAY.get(key)
+    if not ticker:
+        return
+    try:
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1m&range=1d"
+        r = await client.get(url, headers={**HEADERS, "Accept": "application/json"}, timeout=15, follow_redirects=True)
+        r.raise_for_status()
+        result = r.json()["chart"]["result"][0]
+        timestamps = result.get("timestamp", [])
+        closes = result["indicators"]["quote"][0].get("close", [])
+        for ts, price in zip(timestamps, closes):
+            if price is None:
+                continue
+            iso = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+            _history[key].append({"t": iso, "p": float(price)})
+    except Exception:
+        pass
+
+
 async def start_metals_background() -> None:
     global _refresh_task
+    # Pre-fill history buffers so charts are useful immediately on startup
+    async with httpx.AsyncClient() as client:
+        await asyncio.gather(*[_prefill_history(key, client) for key, *_ in _COMMODITIES])
     await _refresh_cache()
     _refresh_task = asyncio.create_task(_background_loop())
 
