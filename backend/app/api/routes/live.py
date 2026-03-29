@@ -49,19 +49,28 @@ MILITARY_PREFIXES = {
     "RNAF", "DAF", "BAF", "NATO", "USAF",
 }
 
-# ─── Active conflict / hot zones (lat/lon bounding boxes) ────────────────────
+# ─── Tight conflict zones only (not broad regions) ───────────────────────────
 HOT_ZONES = [
-    {"name": "Ukraine",          "lat": (44.0, 53.0), "lon": (22.0, 41.0)},
-    {"name": "Middle East",      "lat": (20.0, 38.0), "lon": (28.0, 60.0)},
-    {"name": "South China Sea",  "lat": (4.0,  25.0), "lon": (105.0, 125.0)},
-    {"name": "Korean Peninsula", "lat": (34.0, 42.0), "lon": (124.0, 132.0)},
-    {"name": "Black Sea",        "lat": (40.0, 47.0), "lon": (27.0,  42.0)},
-    {"name": "Sahel",            "lat": (10.0, 20.0), "lon": (-18.0, 25.0)},
-    {"name": "Myanmar",          "lat": (10.0, 28.0), "lon": (92.0,  102.0)},
+    {"name": "Ukraine war zone",   "lat": (46.0, 52.5), "lon": (28.0, 40.0)},
+    {"name": "Gaza / Israel",      "lat": (29.5, 33.5), "lon": (33.5, 36.5)},
+    {"name": "Yemen",              "lat": (12.0, 18.5), "lon": (42.0, 50.0)},
+    {"name": "Syria / Iraq",       "lat": (32.0, 37.5), "lon": (36.0, 46.0)},
+    {"name": "Taiwan Strait",      "lat": (22.0, 27.0), "lon": (118.0, 123.0)},
+    {"name": "Korean DMZ",         "lat": (37.0, 39.5), "lon": (125.0, 130.0)},
+    {"name": "Black Sea",          "lat": (41.5, 46.5), "lon": (28.5, 37.5)},
+    {"name": "Myanmar conflict",   "lat": (16.0, 25.0), "lon": (94.0, 100.0)},
+    {"name": "Sahel / Mali",       "lat": (12.0, 18.0), "lon": (-5.0, 5.0)},
 ]
 
-# ─── Countries whose aircraft are always tracked ─────────────────────────────
-WATCHED_COUNTRIES = {"Russia", "China", "Iran", "North Korea", "Belarus"}
+# ─── Watched-country aircraft only when OUTSIDE their home territory ──────────
+# Avoids flooding the map with routine domestic flights
+WATCHED_COUNTRY_HOME = {
+    "Russia":      {"lat": (41.0, 82.0), "lon": (19.0, 180.0)},
+    "China":       {"lat": (18.0, 54.0), "lon": (73.0, 135.0)},
+    "Iran":        {"lat": (24.0, 40.0), "lon": (44.0, 64.0)},
+    "North Korea": {"lat": (37.0, 43.0), "lon": (124.0, 130.0)},
+    "Belarus":     {"lat": (51.0, 57.0), "lon": (23.5, 33.0)},
+}
 
 
 def _hot_zone(lat: float, lon: float) -> str | None:
@@ -71,23 +80,30 @@ def _hot_zone(lat: float, lon: float) -> str | None:
     return None
 
 
+def _is_home(country: str, lat: float, lon: float) -> bool:
+    home = WATCHED_COUNTRY_HOME.get(country)
+    if not home:
+        return False
+    return home["lat"][0] <= lat <= home["lat"][1] and home["lon"][0] <= lon <= home["lon"][1]
+
+
 def _classify(callsign: str | None, country: str, lat: float, lon: float) -> tuple[str, str] | None:
     """Return (category, reason) or None if not intelligence-relevant."""
     cs = (callsign or "").upper()
 
-    # Military callsign match
+    # Military callsign match (highest priority)
     for prefix in MILITARY_PREFIXES:
         if cs.startswith(prefix):
             return ("military", f"{country} military")
 
-    # Hot zone — any aircraft
+    # Tight conflict zone — any aircraft
     zone = _hot_zone(lat, lon)
     if zone:
         return ("hotzone", zone)
 
-    # Watched country registration
-    if country in WATCHED_COUNTRIES:
-        return ("watched", country)
+    # Watched country — only when operating OUTSIDE home territory
+    if country in WATCHED_COUNTRY_HOME and not _is_home(country, lat, lon):
+        return ("watched", f"{country} aircraft abroad")
 
     return None
 

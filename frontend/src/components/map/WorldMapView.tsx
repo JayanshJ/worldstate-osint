@@ -98,19 +98,19 @@ const AIRCRAFT_COLORS: Record<string, string> = {
 function PlanePath({ heading, zoom, hovered, category }: { heading: number; zoom: number; hovered?: boolean; category?: string }) {
   const color = hovered ? '#ffffff' : (AIRCRAFT_COLORS[category ?? ''] ?? '#00d4ff')
 
-  if (zoom < 3) {
-    // World zoom: tiny chevron — readable density, shows heading
-    const d = 1.6 / zoom
+  if (zoom < 6) {
+    // World / mid zoom: tiny dot with heading tick
+    const d = 1.0 / zoom
     return (
       <g transform={`rotate(${heading})`}>
-        <circle r={d * 0.7} fill={color} opacity={0.75} />
-        <line x1={0} y1={0} x2={0} y2={-d * 2.2} stroke={color} strokeWidth={d * 0.55} opacity={0.5} />
+        <circle r={d * 0.9} fill={color} opacity={0.85} />
+        <line x1={0} y1={0} x2={0} y2={-d * 2.5} stroke={color} strokeWidth={d * 0.5} opacity={0.55} />
       </g>
     )
   }
 
   // Zoomed in: full top-down silhouette
-  const s = 2.2 / Math.sqrt(zoom)
+  const s = 1.6 / Math.sqrt(zoom)
   return (
     <g transform={`rotate(${heading})`}>
       <ellipse cx={0} cy={-s * 0.8} rx={s * 0.85} ry={s * 5.2} fill={color} opacity={0.95} />
