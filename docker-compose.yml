@@ -148,7 +148,7 @@ services:
       postgres:
         condition: service_healthy
     command: >
-      sh -c "chmod +x /backup.sh && while true; do /backup.sh; sleep 86400; done"
+      sh -c "while true; do sh /backup.sh; sleep 86400; done"
 
 volumes:
   pgdata:
