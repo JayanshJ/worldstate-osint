@@ -90,7 +90,7 @@ interface Props {
 
 // ─── Plane SVG (top-down silhouette, pointing up, rotated by heading) ────────
 function PlanePath({ heading, zoom, hovered }: { heading: number; zoom: number; hovered?: boolean }) {
-  const s = 3.2 / Math.sqrt(zoom)
+  const s = 1.4 / Math.sqrt(zoom)
   const color = hovered ? '#ffffff' : '#00d4ff'
   return (
     <g transform={`rotate(${heading})`}>
