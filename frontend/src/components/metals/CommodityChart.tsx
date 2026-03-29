@@ -89,13 +89,17 @@ function LineChart({ points, color, range, commodity, tz }: {
   const pad = (hi - lo) * 0.15 || hi * 0.008
   const yLo = lo - pad, yHi = hi + pad
 
-  const xS = (i: number) => PL + (i / (points.length - 1)) * CW
+  // Time-based x-scaling so market gaps (evenings, weekends) don't stretch the chart
+  const tsArr = points.map(p => new Date(p.t).getTime())
+  const tMin = tsArr[0], tMax = tsArr[tsArr.length - 1]
+  const tRange = tMax - tMin || 1
+  const xS = (i: number) => PL + ((tsArr[i] - tMin) / tRange) * CW
   const yS = (p: number) => PT + (1 - (p - yLo) / (yHi - yLo)) * CH
 
   const isUp = prices[prices.length - 1] >= prices[0]
   const lineClr = isUp ? color : '#f87171'
 
-  const coords: [number, number][] = points.map((p, i) => [xS(i), yS(p.p)])
+  const coords: [number, number][] = points.map((_, i) => [xS(i), yS(points[i].p)])
   const line = smoothPath(coords)
 
   const yTicks = [0, 0.5, 1].map(f => yLo + f * (yHi - yLo))
@@ -105,8 +109,13 @@ function LineChart({ points, color, range, commodity, tz }: {
     const svg = svgRef.current; if (!svg) return
     const r = svg.getBoundingClientRect()
     const mx = (e.clientX - r.left) * (W / r.width) - PL
-    setHoverIdx(Math.max(0, Math.min(points.length - 1, Math.round(mx / CW * (points.length - 1)))))
-  }, [points.length])
+    // Find closest point by time position
+    const targetT = tMin + (mx / CW) * tRange
+    let closest = 0
+    let bestDiff = Infinity
+    tsArr.forEach((t, i) => { const d = Math.abs(t - targetT); if (d < bestDiff) { bestDiff = d; closest = i } })
+    setHoverIdx(closest)
+  }, [tsArr, tMin, tRange])
 
   const hp = hoverIdx !== null ? points[hoverIdx] : null
   const hx = hoverIdx !== null ? xS(hoverIdx) : null

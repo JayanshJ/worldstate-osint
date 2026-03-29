@@ -25,14 +25,19 @@ _COMMODITIES = [
 ]
 
 # Yahoo Finance range/interval matrix for each UI range
-# range=1d = "last trading session" on Yahoo (works on weekends — returns Friday)
+# Always use range=5d for intraday so weekends/holidays still return the last session.
+# Time-window filtering is done in _build_history_points, anchored to the LAST data
+# point (not wall-clock), so closed-market weekends work correctly.
 _YF_PARAMS = {
-    "1h":  {"interval": "2m",  "range": "1d"},
-    "6h":  {"interval": "5m",  "range": "1d"},
-    "1d":  {"interval": "15m", "range": "1d"},
+    "1h":  {"interval": "2m",  "range": "5d"},
+    "6h":  {"interval": "5m",  "range": "5d"},
+    "1d":  {"interval": "15m", "range": "5d"},
     "1w":  {"interval": "1h",  "range": "5d"},
     "1m":  {"interval": "1d",  "range": "1mo"},
 }
+
+# How many hours back from the last data point each UI range shows
+_RANGE_HOURS = {"1h": 1, "6h": 6, "1d": 24, "1w": 5 * 24}
 
 # Spot-price cache (60s TTL)
 _spot_cache: dict = {key: {"price": "···", "change": None, "raw": 0.0} for key, *_ in _COMMODITIES}
@@ -133,11 +138,10 @@ async def start_metals_background() -> None:
 
 
 def _build_history_points(result: dict, ui_range: str) -> list[dict]:
-    """Extract time-series points from a Yahoo Finance result.
+    """Extract and window time-series points from a Yahoo Finance result.
 
-    1h/6h/1d  — Yahoo fetches exactly 1 trading day; we trim from the end for sub-day.
-    1w        — 5 trading days of hourly bars.
-    1m        — 1 month of daily bars (with OHLC).
+    Time windows are anchored to the LAST available data point, not wall-clock time.
+    This means closed-market weekends correctly show the last trading session.
     """
     timestamps = result.get("timestamp", [])
     quote      = result["indicators"]["quote"][0]
@@ -148,15 +152,21 @@ def _build_history_points(result: dict, ui_range: str) -> list[dict]:
 
     include_ohlc = ui_range in ("1w", "1m")
 
-    # Build all valid points
-    all_pts = []
+    # Find the last valid timestamp to anchor our window
+    valid_ts = [ts for ts, c in zip(timestamps, closes) if c is not None]
+    if not valid_ts:
+        return []
+
+    hours_back = _RANGE_HOURS.get(ui_range)   # None for "1m" → keep all
+    cutoff = (max(valid_ts) - hours_back * 3600) if hours_back else 0
+
+    pts = []
     for i, (ts, c) in enumerate(zip(timestamps, closes)):
-        if c is None:
+        if c is None or ts < cutoff:
             continue
         pt: dict = {
             "t": datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(),
             "p": float(c),
-            "_ts": ts,
         }
         if include_ohlc:
             o  = opens[i] if i < len(opens) else None
@@ -165,23 +175,9 @@ def _build_history_points(result: dict, ui_range: str) -> list[dict]:
             if o  is not None: pt["o"] = float(o)
             if h  is not None: pt["h"] = float(h)
             if lo is not None: pt["l"] = float(lo)
-        all_pts.append(pt)
+        pts.append(pt)
 
-    if not all_pts:
-        return []
-
-    # For 1h/6h, trim from the last point backwards by N hours
-    if ui_range in ("1h", "6h"):
-        hours = {"1h": 1, "6h": 6}[ui_range]
-        last_ts = all_pts[-1]["_ts"]
-        cutoff  = last_ts - hours * 3600
-        all_pts = [p for p in all_pts if p["_ts"] >= cutoff]
-
-    # Remove internal _ts field before returning
-    for p in all_pts:
-        p.pop("_ts", None)
-
-    return all_pts
+    return pts
 
 
 # ── Endpoints ───────────────────────────────────────────────────────────────
