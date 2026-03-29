@@ -48,6 +48,7 @@ services:
       OPENAI_API_KEY:   ${OPENAI_API_KEY}
       GOOGLE_API_KEY:   ${GOOGLE_API_KEY:-}
       FINNHUB_API_KEY:  ${FINNHUB_API_KEY:-}
+      RESEND_API_KEY:   ${RESEND_API_KEY:-}
       JWT_SECRET_KEY:   ${JWT_SECRET_KEY}
       ENVIRONMENT:      ${ENVIRONMENT:-production}
       DOMAIN:           ${DOMAIN:-}
@@ -101,6 +102,7 @@ services:
       REDIS_URL:       redis://:${REDIS_PASSWORD:-redis_secret}@redis:6379/0
       OPENAI_API_KEY:  ${OPENAI_API_KEY}
       GOOGLE_API_KEY:  ${GOOGLE_API_KEY:-}
+      RESEND_API_KEY:  ${RESEND_API_KEY:-}
       JWT_SECRET_KEY:  ${JWT_SECRET_KEY}
     depends_on:
       postgres:
