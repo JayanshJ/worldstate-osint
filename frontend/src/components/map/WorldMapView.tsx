@@ -88,35 +88,30 @@ interface Props {
   onClusterSelect?: (id: string) => void
 }
 
-// ─── Plane SVG (top-down silhouette, pointing up, rotated by heading) ────────
+// ─── Plane SVG (zoom-adaptive: dot at world view, silhouette when zoomed in) ──
 function PlanePath({ heading, zoom, hovered }: { heading: number; zoom: number; hovered?: boolean }) {
-  const s = 1.4 / Math.sqrt(zoom)
   const color = hovered ? '#ffffff' : '#00d4ff'
+
+  if (zoom < 3) {
+    // World zoom: tiny chevron — readable density, shows heading
+    const d = 1.6 / zoom
+    return (
+      <g transform={`rotate(${heading})`}>
+        <circle r={d * 0.7} fill={color} opacity={0.75} />
+        <line x1={0} y1={0} x2={0} y2={-d * 2.2} stroke={color} strokeWidth={d * 0.55} opacity={0.5} />
+      </g>
+    )
+  }
+
+  // Zoomed in: full top-down silhouette
+  const s = 2.2 / Math.sqrt(zoom)
   return (
     <g transform={`rotate(${heading})`}>
-      {/* Fuselage */}
       <ellipse cx={0} cy={-s * 0.8} rx={s * 0.85} ry={s * 5.2} fill={color} opacity={0.95} />
-      {/* Left wing — swept delta */}
-      <path
-        d={`M ${-s*0.85},${s*0.2} L ${-s*7.8},${s*3.8} L ${-s*0.85},${s*3.8} Z`}
-        fill={color} opacity={0.8}
-      />
-      {/* Right wing */}
-      <path
-        d={`M ${s*0.85},${s*0.2} L ${s*7.8},${s*3.8} L ${s*0.85},${s*3.8} Z`}
-        fill={color} opacity={0.8}
-      />
-      {/* Left horizontal stabilizer */}
-      <path
-        d={`M ${-s*0.75},${s*3.6} L ${-s*3.2},${s*5.6} L ${-s*0.75},${s*5.0} Z`}
-        fill={color} opacity={0.8}
-      />
-      {/* Right horizontal stabilizer */}
-      <path
-        d={`M ${s*0.75},${s*3.6} L ${s*3.2},${s*5.6} L ${s*0.75},${s*5.0} Z`}
-        fill={color} opacity={0.8}
-      />
-      {/* Cockpit glint */}
+      <path d={`M ${-s*0.85},${s*0.2} L ${-s*7.8},${s*3.8} L ${-s*0.85},${s*3.8} Z`} fill={color} opacity={0.8} />
+      <path d={`M ${s*0.85},${s*0.2} L ${s*7.8},${s*3.8} L ${s*0.85},${s*3.8} Z`} fill={color} opacity={0.8} />
+      <path d={`M ${-s*0.75},${s*3.6} L ${-s*3.2},${s*5.6} L ${-s*0.75},${s*5.0} Z`} fill={color} opacity={0.8} />
+      <path d={`M ${s*0.75},${s*3.6} L ${s*3.2},${s*5.6} L ${s*0.75},${s*5.0} Z`} fill={color} opacity={0.8} />
       <ellipse cx={0} cy={-s*4.2} rx={s*0.45} ry={s*0.9} fill={color} opacity={0.5} />
     </g>
   )
