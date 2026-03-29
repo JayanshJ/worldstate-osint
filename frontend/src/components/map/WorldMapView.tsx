@@ -88,24 +88,36 @@ interface Props {
   onClusterSelect?: (id: string) => void
 }
 
-// ─── Plane SVG path (pointing up, rotated by heading) ─────────────────────────
-function PlanePath({ heading, zoom }: { heading: number; zoom: number }) {
-  // Scale inversely with zoom so planes keep a constant screen size
-  const s = 3.5 / Math.sqrt(zoom)
+// ─── Plane SVG (top-down silhouette, pointing up, rotated by heading) ────────
+function PlanePath({ heading, zoom, hovered }: { heading: number; zoom: number; hovered?: boolean }) {
+  const s = 3.2 / Math.sqrt(zoom)
+  const color = hovered ? '#ffffff' : '#00d4ff'
   return (
     <g transform={`rotate(${heading})`}>
-      {/* fuselage */}
+      {/* Fuselage */}
+      <ellipse cx={0} cy={-s * 0.8} rx={s * 0.85} ry={s * 5.2} fill={color} opacity={0.95} />
+      {/* Left wing — swept delta */}
       <path
-        d={`M0,${-4*s} L${-1.2*s},${2*s} L0,${0.8*s} L${1.2*s},${2*s} Z`}
-        fill="#00d4ff"
-        opacity={0.85}
+        d={`M ${-s*0.85},${s*0.2} L ${-s*7.8},${s*3.8} L ${-s*0.85},${s*3.8} Z`}
+        fill={color} opacity={0.8}
       />
-      {/* wings */}
+      {/* Right wing */}
       <path
-        d={`M${-3.5*s},${1*s} L0,${-1*s} L${3.5*s},${1*s} L${1*s},${1.8*s} L0,${0.6*s} L${-1*s},${1.8*s} Z`}
-        fill="#00d4ff"
-        opacity={0.60}
+        d={`M ${s*0.85},${s*0.2} L ${s*7.8},${s*3.8} L ${s*0.85},${s*3.8} Z`}
+        fill={color} opacity={0.8}
       />
+      {/* Left horizontal stabilizer */}
+      <path
+        d={`M ${-s*0.75},${s*3.6} L ${-s*3.2},${s*5.6} L ${-s*0.75},${s*5.0} Z`}
+        fill={color} opacity={0.8}
+      />
+      {/* Right horizontal stabilizer */}
+      <path
+        d={`M ${s*0.75},${s*3.6} L ${s*3.2},${s*5.6} L ${s*0.75},${s*5.0} Z`}
+        fill={color} opacity={0.8}
+      />
+      {/* Cockpit glint */}
+      <ellipse cx={0} cy={-s*4.2} rx={s*0.45} ry={s*0.9} fill={color} opacity={0.5} />
     </g>
   )
 }
@@ -125,11 +137,14 @@ export function WorldMapView({ onClusterSelect }: Props) {
   const [isDragging,       setIsDragging]       = useState(false)
 
   // Live layers
-  const [showAircraft,  setShowAircraft]  = useState(false)
-  const [showVessels,   setShowVessels]   = useState(false)
-  const [aircraft,      setAircraft]      = useState<AircraftData[]>([])
-  const [vessels,       setVessels]       = useState<VesselZone[]>([])
-  const [loadingLayer,  setLoadingLayer]  = useState(false)
+  const [showAircraft,     setShowAircraft]     = useState(false)
+  const [showVessels,      setShowVessels]       = useState(false)
+  const [aircraft,         setAircraft]          = useState<AircraftData[]>([])
+  const [vessels,          setVessels]           = useState<VesselZone[]>([])
+  const [loadingLayer,     setLoadingLayer]      = useState(false)
+  const [hoveredAircraft,  setHoveredAircraft]   = useState<AircraftData | null>(null)
+  const [aircraftUpdatedAt, setAircraftUpdatedAt] = useState<Date | null>(null)
+  const [aircraftAge,      setAircraftAge]       = useState(0)
 
   // Fetch clusters once on mount
   useEffect(() => {
@@ -138,22 +153,31 @@ export function WorldMapView({ onClusterSelect }: Props) {
       .catch(() => {})
   }, [])
 
-  // Aircraft — fetch when toggled, refresh every 2 min
+  // Aircraft — fetch when toggled, refresh every 30 s
   useEffect(() => {
     if (!showAircraft) return
     let cancelled = false
-    const fetch = async () => {
+    const doFetch = async () => {
       setLoadingLayer(true)
       try {
         const data = await api.live.aircraft()
-        if (!cancelled) setAircraft(data)
+        if (!cancelled) { setAircraft(data); setAircraftUpdatedAt(new Date()); setAircraftAge(0) }
       } catch {}
       finally { if (!cancelled) setLoadingLayer(false) }
     }
-    fetch()
-    const iv = setInterval(fetch, 120_000)
+    doFetch()
+    const iv = setInterval(doFetch, 30_000)
     return () => { cancelled = true; clearInterval(iv) }
   }, [showAircraft])
+
+  // Tick "updated X s ago" every second
+  useEffect(() => {
+    if (!aircraftUpdatedAt) return
+    const iv = setInterval(() => {
+      setAircraftAge(Math.floor((Date.now() - aircraftUpdatedAt.getTime()) / 1000))
+    }, 1000)
+    return () => clearInterval(iv)
+  }, [aircraftUpdatedAt])
 
   // Vessels — fetch once when toggled
   useEffect(() => {
@@ -321,17 +345,48 @@ export function WorldMapView({ onClusterSelect }: Props) {
 
             {/* ── Aircraft markers ─────────────────────────────────────── */}
             {showAircraft && aircraft.map(ac => (
-              <Marker
-                key={ac.icao24}
-                coordinates={[ac.lon, ac.lat]}
-              >
-                <PlanePath heading={ac.heading} zoom={zoom} />
+              <Marker key={ac.icao24} coordinates={[ac.lon, ac.lat]}>
+                <g
+                  onMouseEnter={() => setHoveredAircraft(ac)}
+                  onMouseLeave={() => setHoveredAircraft(null)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <circle r={10 / zoom} fill="transparent" />
+                  <PlanePath heading={ac.heading} zoom={zoom} hovered={hoveredAircraft?.icao24 === ac.icao24} />
+                </g>
               </Marker>
             ))}
           </ZoomableGroup>
         </ComposableMap>
 
-        {/* Hover tooltip */}
+        {/* Aircraft hover tooltip */}
+        <AnimatePresence>
+          {hoveredAircraft && (
+            <motion.div
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="absolute top-4 left-4 pointer-events-none z-10"
+            >
+              <div className="bg-terminal-surface border border-cyan-500/30 px-3 py-2 rounded-sm font-mono text-[10px] text-terminal-text flex flex-col gap-1 min-w-[160px]">
+                <div className="flex items-center gap-1.5">
+                  <Plane size={9} className="text-cyan-400" />
+                  <span className="text-cyan-400 font-bold tracking-wider">
+                    {hoveredAircraft.callsign?.trim() || hoveredAircraft.icao24.toUpperCase()}
+                  </span>
+                  <span className="text-terminal-dim text-[9px]">{hoveredAircraft.country}</span>
+                </div>
+                <div className="flex gap-3 text-[9px] text-terminal-dim">
+                  <span>ALT {hoveredAircraft.altitude > 0 ? `${Math.round(hoveredAircraft.altitude * 3.281).toLocaleString()} ft` : 'GND'}</span>
+                  <span>SPD {Math.round(hoveredAircraft.velocity * 1.944)} kts</span>
+                  <span>HDG {Math.round(hoveredAircraft.heading)}°</span>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Country hover tooltip */}
         <AnimatePresence>
           {hoveredCountry && !panelOpen && (
             <motion.div
@@ -367,7 +422,12 @@ export function WorldMapView({ onClusterSelect }: Props) {
             AIRCRAFT
             {showAircraft && loadingLayer && <Loader2 size={8} className="animate-spin" />}
             {showAircraft && !loadingLayer && (
-              <span className="text-[9px] opacity-60">{aircraft.length}</span>
+              <>
+                <span className="text-[9px] opacity-60">{aircraft.length}</span>
+                {aircraftAge > 0 && (
+                  <span className="text-[8px] opacity-40">{aircraftAge}s</span>
+                )}
+              </>
             )}
           </button>
           <button
