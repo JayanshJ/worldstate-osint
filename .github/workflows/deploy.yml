@@ -44,9 +44,11 @@ jobs:
             set -e
             cd ~/worldstate-osint
 
-            # Pull using token so no interactive credentials needed
+            # Pull using token so no interactive credentials needed.
+            # Use fetch + reset --hard so local server changes never block a deploy.
             git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/JayanshJ/worldstate-osint.git
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
             git remote set-url origin https://github.com/JayanshJ/worldstate-osint.git
 
             BACKEND="${{ steps.changes.outputs.backend }}"
