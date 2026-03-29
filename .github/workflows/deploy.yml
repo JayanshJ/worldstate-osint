@@ -25,8 +25,9 @@ jobs:
           echo "$CHANGED" | grep -q "^backend/"  && BACKEND=true
           echo "$CHANGED" | grep -q "^frontend/" && FRONTEND=true
 
-          # If workflow itself changed, rebuild everything
+          # If workflow or compose config changed, rebuild everything
           echo "$CHANGED" | grep -q "^\.github/" && BACKEND=true && FRONTEND=true
+          echo "$CHANGED" | grep -q "^docker-compose" && BACKEND=true && FRONTEND=true
 
           echo "backend=$BACKEND"   >> $GITHUB_OUTPUT
           echo "frontend=$FRONTEND" >> $GITHUB_OUTPUT
