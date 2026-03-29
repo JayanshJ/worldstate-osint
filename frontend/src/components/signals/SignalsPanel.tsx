@@ -161,6 +161,14 @@ function SignalCard({ signal }: { signal: MarketSignal }) {
               {deal}
             </span>
           )}
+          {signal.ticker && act !== 'WATCH' && (
+            <span
+              className="text-[11px] font-bold font-mono px-2 py-0.5 rounded"
+              style={{ backgroundColor: cfg.text, color: '#0a0e14' }}
+            >
+              {act === 'BUY' ? '↑' : act === 'SELL' ? '↓' : '·'} {act === 'BUY' ? 'Buy' : act === 'SELL' ? 'Sell' : 'Hold'} {signal.ticker}
+            </span>
+          )}
         </div>
         <span className="text-[9px] font-mono text-terminal-dim">{relativeTime(signal.published_at)}</span>
       </div>
