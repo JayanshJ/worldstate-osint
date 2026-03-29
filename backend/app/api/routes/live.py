@@ -1,26 +1,95 @@
 """
 Live tracking endpoints.
 
-GET /api/v1/live/aircraft  — real-time aircraft positions from OpenSky Network (cached 2 min)
+GET /api/v1/live/aircraft  — intelligence-relevant aircraft from OpenSky (cached 60 s)
 GET /api/v1/live/vessels   — strategic maritime intelligence zones
+
+Only surfaces aircraft that provide real geopolitical insight:
+  • Military / government aircraft (by callsign prefix)
+  • Any aircraft over active conflict / hot zones
+  • Aircraft registered to watched countries (Russia, China, Iran, North Korea)
 """
-import random
 import time
 import logging
-from typing import Annotated
 
 import httpx
 from fastapi import APIRouter, Depends
 
 from app.core.security import get_current_user
-from app.models.user import User
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 logger = logging.getLogger(__name__)
 
-# ─── In-process cache (shared across workers via module state) ────────────────
+# ─── Cache ────────────────────────────────────────────────────────────────────
 _aircraft_cache: dict = {"data": None, "expires": 0.0}
-AIRCRAFT_TTL = 120  # seconds
+AIRCRAFT_TTL = 60  # seconds
+
+# ─── Military / government callsign prefixes ──────────────────────────────────
+# These are ICAO telephony prefixes assigned to state/military operators.
+MILITARY_PREFIXES = {
+    # United States
+    "RCH", "REACH", "JAKE", "ROCKY", "TOPCAT", "VIPER", "SKULL", "GRIM",
+    "FURY", "DEMON", "GHOST", "DUKE", "HUNT", "KING", "VENUS", "BRIO",
+    "BUICK", "SWIFT", "IRON", "TORCH", "SPAR",
+    # United Kingdom
+    "RRR", "FORTE", "MAGMA", "ASCOT",
+    # NATO / multinational
+    "NATO", "AWACS",
+    # Germany
+    "GAF", "GERMAN",
+    # France
+    "CTM", "FRFA", "FAF",
+    # Russia
+    "RFF", "RSU",
+    # Israel
+    "IAF",
+    # China
+    "CCA",  # PLAAF
+    # Others
+    "RNAF", "DAF", "BAF", "NATO", "USAF",
+}
+
+# ─── Active conflict / hot zones (lat/lon bounding boxes) ────────────────────
+HOT_ZONES = [
+    {"name": "Ukraine",          "lat": (44.0, 53.0), "lon": (22.0, 41.0)},
+    {"name": "Middle East",      "lat": (20.0, 38.0), "lon": (28.0, 60.0)},
+    {"name": "South China Sea",  "lat": (4.0,  25.0), "lon": (105.0, 125.0)},
+    {"name": "Korean Peninsula", "lat": (34.0, 42.0), "lon": (124.0, 132.0)},
+    {"name": "Black Sea",        "lat": (40.0, 47.0), "lon": (27.0,  42.0)},
+    {"name": "Sahel",            "lat": (10.0, 20.0), "lon": (-18.0, 25.0)},
+    {"name": "Myanmar",          "lat": (10.0, 28.0), "lon": (92.0,  102.0)},
+]
+
+# ─── Countries whose aircraft are always tracked ─────────────────────────────
+WATCHED_COUNTRIES = {"Russia", "China", "Iran", "North Korea", "Belarus"}
+
+
+def _hot_zone(lat: float, lon: float) -> str | None:
+    for z in HOT_ZONES:
+        if z["lat"][0] <= lat <= z["lat"][1] and z["lon"][0] <= lon <= z["lon"][1]:
+            return z["name"]
+    return None
+
+
+def _classify(callsign: str | None, country: str, lat: float, lon: float) -> tuple[str, str] | None:
+    """Return (category, reason) or None if not intelligence-relevant."""
+    cs = (callsign or "").upper()
+
+    # Military callsign match
+    for prefix in MILITARY_PREFIXES:
+        if cs.startswith(prefix):
+            return ("military", f"{country} military")
+
+    # Hot zone — any aircraft
+    zone = _hot_zone(lat, lon)
+    if zone:
+        return ("hotzone", zone)
+
+    # Watched country registration
+    if country in WATCHED_COUNTRIES:
+        return ("watched", country)
+
+    return None
 
 
 async def _fetch_opensky() -> list[dict]:
@@ -29,7 +98,7 @@ async def _fetch_opensky() -> list[dict]:
         return _aircraft_cache["data"]
 
     try:
-        async with httpx.AsyncClient(timeout=12) as client:
+        async with httpx.AsyncClient(timeout=15) as client:
             r = await client.get("https://opensky-network.org/api/states/all")
             r.raise_for_status()
             raw = r.json()
@@ -45,23 +114,31 @@ async def _fetch_opensky() -> list[dict]:
         if lon is None or lat is None or on_ground:
             continue
         alt = s[7] or 0
-        if alt < 500:          # skip very low / take-off noise
+        if alt < 1000:  # ignore low-altitude / ground traffic
             continue
+
+        callsign = (s[1] or "").strip() or None
+        country  = s[2] or ""
+
+        result = _classify(callsign, country, lat, lon)
+        if result is None:
+            continue
+
+        category, reason = result
         aircraft.append({
             "icao24":   s[0],
-            "callsign": (s[1] or "").strip() or None,
-            "country":  s[2],
+            "callsign": callsign,
+            "country":  country,
             "lon":      round(lon, 4),
             "lat":      round(lat, 4),
-            "altitude": round(alt),        # metres
-            "velocity": round(s[9] or 0),  # m/s
-            "heading":  round(s[10] or 0), # degrees (0 = north)
+            "altitude": round(alt),
+            "velocity": round(s[9] or 0),
+            "heading":  round(s[10] or 0),
+            "category": category,   # "military" | "hotzone" | "watched"
+            "reason":   reason,
         })
 
-    # Cap at 600 spread across the globe
-    if len(aircraft) > 600:
-        aircraft = random.sample(aircraft, 600)
-
+    logger.info("Aircraft filter: %d intelligence-relevant from OpenSky", len(aircraft))
     _aircraft_cache["data"] = aircraft
     _aircraft_cache["expires"] = now + AIRCRAFT_TTL
     return aircraft

@@ -88,9 +88,15 @@ interface Props {
   onClusterSelect?: (id: string) => void
 }
 
+const AIRCRAFT_COLORS: Record<string, string> = {
+  military: '#f59e0b',  // amber — military
+  hotzone:  '#ef4444',  // red   — conflict zone
+  watched:  '#a78bfa',  // violet — watched country
+}
+
 // ─── Plane SVG (zoom-adaptive: dot at world view, silhouette when zoomed in) ──
-function PlanePath({ heading, zoom, hovered }: { heading: number; zoom: number; hovered?: boolean }) {
-  const color = hovered ? '#ffffff' : '#00d4ff'
+function PlanePath({ heading, zoom, hovered, category }: { heading: number; zoom: number; hovered?: boolean; category?: string }) {
+  const color = hovered ? '#ffffff' : (AIRCRAFT_COLORS[category ?? ''] ?? '#00d4ff')
 
   if (zoom < 3) {
     // World zoom: tiny chevron — readable density, shows heading
@@ -347,7 +353,7 @@ export function WorldMapView({ onClusterSelect }: Props) {
                   style={{ cursor: 'pointer' }}
                 >
                   <circle r={10 / zoom} fill="transparent" />
-                  <PlanePath heading={ac.heading} zoom={zoom} hovered={hoveredAircraft?.icao24 === ac.icao24} />
+                  <PlanePath heading={ac.heading} zoom={zoom} hovered={hoveredAircraft?.icao24 === ac.icao24} category={ac.category} />
                 </g>
               </Marker>
             ))}
@@ -365,12 +371,13 @@ export function WorldMapView({ onClusterSelect }: Props) {
             >
               <div className="bg-terminal-surface border border-cyan-500/30 px-3 py-2 rounded-sm font-mono text-[10px] text-terminal-text flex flex-col gap-1 min-w-[160px]">
                 <div className="flex items-center gap-1.5">
-                  <Plane size={9} className="text-cyan-400" />
-                  <span className="text-cyan-400 font-bold tracking-wider">
+                  <Plane size={9} style={{ color: AIRCRAFT_COLORS[hoveredAircraft.category] ?? '#00d4ff' }} />
+                  <span className="font-bold tracking-wider" style={{ color: AIRCRAFT_COLORS[hoveredAircraft.category] ?? '#00d4ff' }}>
                     {hoveredAircraft.callsign?.trim() || hoveredAircraft.icao24.toUpperCase()}
                   </span>
                   <span className="text-terminal-dim text-[9px]">{hoveredAircraft.country}</span>
                 </div>
+                <div className="text-[9px] text-terminal-dim/80 capitalize">{hoveredAircraft.reason}</div>
                 <div className="flex gap-3 text-[9px] text-terminal-dim">
                   <span>ALT {hoveredAircraft.altitude > 0 ? `${Math.round(hoveredAircraft.altitude * 3.281).toLocaleString()} ft` : 'GND'}</span>
                   <span>SPD {Math.round(hoveredAircraft.velocity * 1.944)} kts</span>
@@ -402,6 +409,27 @@ export function WorldMapView({ onClusterSelect }: Props) {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Aircraft legend */}
+        {showAircraft && !loadingLayer && aircraft.length > 0 && (
+          <div className="absolute top-16 right-4 flex flex-col gap-1 bg-terminal-surface/80 border border-terminal-border px-2.5 py-2 rounded-sm">
+            {[
+              { cat: 'military', label: 'Military' },
+              { cat: 'hotzone',  label: 'Conflict zone' },
+              { cat: 'watched',  label: 'Watched country' },
+            ].map(({ cat, label }) => {
+              const count = aircraft.filter(a => a.category === cat).length
+              if (!count) return null
+              return (
+                <div key={cat} className="flex items-center gap-1.5 text-[9px] font-mono">
+                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: AIRCRAFT_COLORS[cat] }} />
+                  <span className="text-terminal-dim">{label}</span>
+                  <span className="text-terminal-dim/50">{count}</span>
+                </div>
+              )
+            })}
+          </div>
+        )}
 
         {/* Layer toggles */}
         <div className="absolute top-4 right-4 flex flex-col gap-1.5">

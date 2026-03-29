@@ -368,14 +368,16 @@ export interface CompanyProfile {
 }
 
 export interface AircraftData {
-  icao24:   string
-  callsign: string | null
-  country:  string
-  lon:      number
-  lat:      number
-  altitude: number
-  velocity: number
-  heading:  number
+  icao24:    string
+  callsign:  string | null
+  country:   string
+  lon:       number
+  lat:       number
+  altitude:  number
+  velocity:  number
+  heading:   number
+  category:  'military' | 'hotzone' | 'watched'
+  reason:    string
 }
 
 export interface VesselZone {
