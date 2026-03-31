@@ -21,6 +21,7 @@ interface WsContextValue {
   lastArticle:         WsNewArticleData | null
   lastClusterUpdate:   WsClusterUpdateData | null
   lastStrategyUpdate:  MarketStrategy[] | null
+  lastAlert:           Record<string, unknown> | null
   clientCount:         number
 }
 
@@ -29,6 +30,7 @@ const WsContext = createContext<WsContextValue>({
   lastArticle:        null,
   lastClusterUpdate:  null,
   lastStrategyUpdate: null,
+  lastAlert:          null,
   clientCount:        0,
 })
 
@@ -45,6 +47,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const [lastArticle, setLastArticle]     = useState<WsNewArticleData | null>(null)
   const [lastClusterUpdate, setLastClusterUpdate] = useState<WsClusterUpdateData | null>(null)
   const [lastStrategyUpdate, setLastStrategyUpdate] = useState<MarketStrategy[] | null>(null)
+  const [lastAlert, setLastAlert]         = useState<Record<string, unknown> | null>(null)
   const [clientCount, setClientCount]     = useState(0)
 
   const wsRef         = useRef<WebSocket | null>(null)
@@ -90,6 +93,9 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
           case 'strategy_update':
             setLastStrategyUpdate((msg.data as WsStrategyUpdateData).strategies ?? null)
             break
+          case 'alert':
+            setLastAlert(msg.data as Record<string, unknown>)
+            break
           // 'heartbeat' and 'pong' — no state update needed
         }
       } catch {
@@ -130,7 +136,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   }, [connect])
 
   return (
-    <WsContext.Provider value={{ status, lastArticle, lastClusterUpdate, lastStrategyUpdate, clientCount }}>
+    <WsContext.Provider value={{ status, lastArticle, lastClusterUpdate, lastStrategyUpdate, lastAlert, clientCount }}>
       {children}
     </WsContext.Provider>
   )

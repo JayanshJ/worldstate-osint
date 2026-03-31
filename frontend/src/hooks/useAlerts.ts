@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type AlertWatch, type AlertWatchCreate } from '@/lib/api'
 import { useWebSocket } from '@/context/WebSocketContext'
 
-const CHANNEL_ALERT = 'worldstate:alert'
 const NOTIF_COOLDOWN_MS = 10_000     // deduplicate browser notifications
 
 export interface AlertNotification {
@@ -29,39 +28,7 @@ export function useAlerts() {
     }).catch(() => setLoading(false))
   }, [])
 
-  // Listen for alert events via a dedicated Redis subscription through WS
-  // The WS context exposes raw lastMessage — we subscribe here
-  const { status } = useWebSocket()
-
-  // Subscribe to native WS for alert channel (separate from the main WsContext
-  // which doesn't expose raw events — so we open a second connection here)
-  const wsRef = useRef<WebSocket | null>(null)
-  useEffect(() => {
-    const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`
-    // reuse the same connection by listening to the window-level custom event
-    // that the WebSocketContext can dispatch (or fall back to polling)
-    return () => { wsRef.current?.close() }
-  }, [])
-
-  // ─── CRUD operations ────────────────────────────────────────────────────
-
-  const createWatch = useCallback(async (data: AlertWatchCreate) => {
-    const watch = await api.alerts.create(data)
-    setWatches(prev => [watch, ...prev])
-    return watch
-  }, [])
-
-  const toggleWatch = useCallback(async (id: string) => {
-    const updated = await api.alerts.toggle(id)
-    setWatches(prev => prev.map(w => w.id === id ? updated : w))
-  }, [])
-
-  const deleteWatch = useCallback(async (id: string) => {
-    await api.alerts.delete(id)
-    setWatches(prev => prev.filter(w => w.id !== id))
-  }, [])
-
-  // ─── Ingest alert notification ────────────────────────────────────────
+  // ─── Ingest alert notification (defined first — used in WS effect below) ──
 
   const ingestAlertPayload = useCallback((payload: Record<string, unknown>) => {
     const watchId = payload.watch_id as string
@@ -102,6 +69,31 @@ export function useAlerts() {
       })
     }
   }, [])
+
+  // ─── CRUD operations ────────────────────────────────────────────────────
+
+  const createWatch = useCallback(async (data: AlertWatchCreate) => {
+    const watch = await api.alerts.create(data)
+    setWatches(prev => [watch, ...prev])
+    return watch
+  }, [])
+
+  const toggleWatch = useCallback(async (id: string) => {
+    const updated = await api.alerts.toggle(id)
+    setWatches(prev => prev.map(w => w.id === id ? updated : w))
+  }, [])
+
+  const deleteWatch = useCallback(async (id: string) => {
+    await api.alerts.delete(id)
+    setWatches(prev => prev.filter(w => w.id !== id))
+  }, [])
+
+  // ─── Wire up to shared WebSocket context ──────────────────────────────
+
+  const { lastAlert } = useWebSocket()
+  useEffect(() => {
+    if (lastAlert) ingestAlertPayload(lastAlert)
+  }, [lastAlert, ingestAlertPayload])
 
   const markAllRead = useCallback(() => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })))

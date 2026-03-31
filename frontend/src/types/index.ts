@@ -75,6 +75,7 @@ export type WsMessageType =
   | 'cluster_update'
   | 'strategy_update'
   | 'breaking'
+  | 'alert'
 
 export interface WsMessage<T = unknown> {
   type: WsMessageType
