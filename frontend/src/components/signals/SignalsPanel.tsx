@@ -161,12 +161,12 @@ function SignalCard({ signal }: { signal: MarketSignal }) {
               {deal}
             </span>
           )}
-          {(act === 'BUY' || act === 'SELL') && (
+          {(act === 'BUY' || act === 'SELL') && signal.ticker && /^[A-Z]{1,5}$/.test(signal.ticker) && (
             <span
               className="text-[11px] font-bold font-mono px-2 py-0.5 rounded"
               style={{ backgroundColor: cfg.text, color: '#0a0e14' }}
             >
-              {act === 'BUY' ? '↑ Buy' : '↓ Sell'} {signal.ticker ?? signal.company.split(' ')[0]}
+              {act === 'BUY' ? '↑ Buy' : '↓ Sell'} {signal.ticker}
             </span>
           )}
         </div>
