@@ -366,6 +366,7 @@ export function SignalsPanel() {
   }
 
   const filtered = signals
+    .filter(s => /^[A-Z]{1,5}$/.test(s.ticker ?? ''))
     .filter(s => {
       if (activeFilter !== 'ALL') {
         const group = FILTER_GROUPS[activeFilter]
