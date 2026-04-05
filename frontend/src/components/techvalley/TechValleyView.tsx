@@ -20,40 +20,143 @@ import { cn, formatAbsTime } from '@/lib/utils'
 import { useTimezone } from '@/context/TimezoneContext'
 import { useWebSocket } from '@/context/WebSocketContext'
 
-// ─── SV company universe ─────────────────────────────────────────────────────
+// ─── SV intelligence filter engine ──────────────────────────────────────────
 
-// Primary SV companies — a cluster must primarily be about these to qualify
-const SV_PRIMARY = [
-  'apple', 'microsoft', 'nvidia', 'alphabet', 'google', 'meta', 'amazon', 'tesla',
-  'netflix', 'salesforce', 'oracle', 'intel', 'amd', 'qualcomm', 'broadcom', 'cisco',
-  'openai', 'anthropic', 'xai', 'mistral', 'perplexity', 'databricks', 'stripe',
-  'spacex', 'palantir', 'rivian', 'lyft', 'uber', 'airbnb', 'doordash', 'coinbase',
-  'snowflake', 'cloudflare', 'crowdstrike', 'okta', 'twilio', 'slack', 'zoom',
-  'sequoia', 'andreessen horowitz', 'a16z', 'y combinator', 'softbank', 'sam altman',
-  'elon musk', 'mark zuckerberg', 'sundar pichai', 'satya nadella', 'jensen huang',
-  'semiconductor', 'silicon valley', 'san francisco tech',
+// Minimum volatility to appear in SV events feed (filters out pure noise)
+const MIN_SV_VOLATILITY = 0.22
+
+// Strong AI/LLM signals — highest weight
+const AI_KEYWORDS = [
+  'artificial intelligence', ' ai ', ' ai,', ' ai.', 'ai-', '-ai ',
+  'large language model', 'llm', 'gpt-', 'chatgpt', 'gemini', 'claude',
+  'openai', 'anthropic', 'machine learning', 'deep learning',
+  'neural network', 'foundation model', 'generative ai', 'agi ',
+  'inference ', 'fine-tun', 'training run', 'model weight',
 ]
 
-// Tech label keywords — cluster label must contain one of these OR 2+ primary orgs
-const TECH_LABEL_KEYWORDS = [
-  'ai ', 'artificial intelligence', 'machine learning', 'llm', 'chatgpt', 'gpt',
-  'semiconductor', 'chip', 'microchip', 'silicon', 'tech ', 'technology',
-  'startup', 'venture', 'funding', 'ipo', 'unicorn', 'software', 'hardware',
-  'cloud', 'saas', 'cybersecurity', 'data center', 'gpu', 'cpu', 'smartphone',
-  'autonomous', 'self-driving', 'electric vehicle', 'ev ', 'robotics', 'drone',
-  'crypto', 'blockchain', 'defi', 'nft', 'web3',
-  'apple', 'google', 'microsoft', 'nvidia', 'openai', 'anthropic', 'tesla',
-  'meta ', 'amazon', 'netflix', 'uber', 'airbnb', 'stripe',
+// Strong tech fundamentals — clearly tech stories
+const STRONG_TECH_KEYWORDS = [
+  'semiconductor', ' chip ', ' chips ', 'chipmaker', 'microchip', 'silicon wafer',
+  'data center', 'hyperscaler', 'cloud computing', 'edge computing',
+  'cybersecurity', 'cyber attack', 'data breach', 'zero-day', 'ransomware',
+  'vulnerability', 'exploit ', 'gpu ', 'cpu ', 'tpu ', 'npu ',
+  'series a', 'series b', 'series c', 'seed round', 'vc funding', 'raises $',
+  'ipo filing', ' ipo ', 'spac ', 'unicorn ', 'acquires ', 'acquisition of',
+  'autonomous vehicle', 'self-driving', 'full self-driving',
+  'quantum computing', 'quantum chip',
+  'crypto exchange', 'defi protocol', 'blockchain network',
+  'antitrust suit', 'ftc v ', 'doj v ', 'tech regulation',
+  'layoffs ', 'laid off', 'workforce reduction', 'headcount',
 ]
+
+// Company-as-keyword — only valid if the company also appears in organizations list
+const SV_COMPANIES_MAJOR = [
+  'apple', 'google', 'alphabet', 'microsoft', 'nvidia', 'meta ', 'amazon',
+  'openai', 'anthropic', 'tesla', 'spacex',
+]
+const SV_COMPANIES_SEC = [
+  'netflix', 'salesforce', 'oracle', 'intel ', 'amd ', 'qualcomm', 'broadcom',
+  'cisco', 'xai ', 'mistral', 'perplexity', 'databricks', 'stripe',
+  'palantir', 'rivian', 'lyft', 'uber ', 'airbnb', 'doordash', 'coinbase',
+  'snowflake', 'cloudflare', 'crowdstrike', 'okta', 'twilio', 'zoom ',
+  'samsung', 'tsmc', 'arm ', 'asml', 'amd',
+]
+const SV_PEOPLE = [
+  'sam altman', 'elon musk', 'mark zuckerberg', 'sundar pichai',
+  'satya nadella', 'jensen huang', 'tim cook', 'jeff bezos',
+  'andy jassy', 'dario amodei', 'demis hassabis',
+]
+const SV_LOCATIONS = [
+  'san francisco', 'silicon valley', 'bay area', 'san jose', 'cupertino',
+  'menlo park', 'palo alto', 'mountain view', 'sunnyvale', 'seattle tech',
+]
+
+// Hard-exclude these — no amount of tech keywords saves them
+const NOISE_LABEL_TERMS = [
+  'hollywood', 'box office', 'film studio', 'screenwriter',
+  'delta air', 'united airlines', 'american airlines', 'southwest air',
+  'drone strike', 'drone warfare', 'drone attack',
+  'missile attack', 'artillery', 'military invasion',
+  'election result', 'votes cast', 'ballot count', 'polling station',
+  ' nba ', ' nfl ', ' mlb ', ' fifa ', 'olympic games',
+  'hurricane ', 'earthquake ', 'wildfire disaster',
+  'drug cartel', 'fentanyl', 'opioid crisis',
+  'space solar power', // Chinese military orbital solar
+  'profit sharing, hollywood',
+]
+
+// All SV signals flattened (for article matching)
+const SV_ALL = [...SV_COMPANIES_MAJOR, ...SV_COMPANIES_SEC, ...SV_PEOPLE]
+const TECH_ALL_KEYWORDS = [...AI_KEYWORDS, ...STRONG_TECH_KEYWORDS]
+
+// ── Scoring engine ────────────────────────────────────────────────────────────
+function svScore(cluster: EventCluster): number {
+  const orgs      = cluster.entities?.organizations ?? []
+  const locs      = cluster.entities?.locations ?? []
+  const label     = (cluster.label ?? '').toLowerCase()
+  const orgsLower = orgs.map(o => o.toLowerCase())
+
+  let score = 0
+
+  // AI/LLM keywords in label → highest value
+  if (AI_KEYWORDS.some(kw => label.includes(kw))) score += 4
+
+  // Strong tech keyword in label
+  if (STRONG_TECH_KEYWORDS.some(kw => label.includes(kw))) score += 2
+
+  // Major SV company in organizations (confirmed entity extraction)
+  let majCount = 0
+  for (const co of SV_COMPANIES_MAJOR) {
+    if (orgsLower.some(o => o.includes(co.trim()))) {
+      score += 4; if (++majCount >= 2) break
+    }
+  }
+
+  // Secondary SV company in organizations
+  let secCount = 0
+  for (const co of SV_COMPANIES_SEC) {
+    if (orgsLower.some(o => o.includes(co.trim()))) {
+      score += 2; if (++secCount >= 3) break
+    }
+  }
+
+  // SV person in organizations
+  if (SV_PEOPLE.some(p => orgsLower.some(o => o.includes(p)))) score += 3
+
+  // SV location confirmed
+  if (locs.some(l => SV_LOCATIONS.some(sv => l.toLowerCase().includes(sv)))) score += 2
+
+  // Bonus: company name appears in BOTH label AND organizations (high confidence)
+  for (const co of SV_COMPANIES_MAJOR) {
+    if (label.includes(co.trim()) && orgsLower.some(o => o.includes(co.trim()))) {
+      score += 2; break
+    }
+  }
+
+  return score
+}
 
 const FUNDING_KEYWORDS = [
   'raises', 'funding', 'Series A', 'Series B', 'Series C', 'IPO', 'valuation',
   'unicorn', 'acquisition', 'acquires', 'merger', 'SPAC', 'venture', 'round',
 ]
 
+// Expanded tech/SV-focused sources
 const TECH_SOURCE_IDS = new Set([
+  // Pure tech publications
   'techcrunch', 'wired', 'ars_technica', 'the_verge', 'engadget',
-  'mit_technology_review', 'venturebeat', 'bloomberg_tech',
+  'mit_technology_review', 'venturebeat', 'bloomberg_tech', 'bloomberg_technology',
+  'zdnet', 'cnet', 'techradar', 'pcmag', 'ieee_spectrum', 'acm_technews',
+  // Startup / VC / deals
+  'hacker_news', 'crunchbase_news', 'pitchbook', 'sifted', 'tech_eu',
+  // AI-focused
+  'ai_news', 'the_decoder', 'import_ai', 'synced_review', 'ai_business',
+  // Consumer tech
+  '9to5mac', 'macrumors', 'android_authority', '9to5google', 'xda_developers',
+  // Business/tech crossover
+  'business_insider_tech', 'fortune_tech', 'fast_company', 'inc_magazine',
+  'axios_pro', 'the_information', 'semafor_tech', 'protocol', 'morningbrew_tech',
+  'stratechery', 'platformer', 'dkb_report',
 ])
 
 // ─── Stock price strip ───────────────────────────────────────────────────────
@@ -156,38 +259,62 @@ function StockStrip({ onTickerClick }: { onTickerClick: (ticker: string) => void
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function isSVCluster(cluster: EventCluster): boolean {
-  const orgs   = cluster.entities?.organizations ?? []
-  const locs   = cluster.entities?.locations ?? []
-  const label  = (cluster.label ?? '').toLowerCase()
-  const bullets = (cluster.bullets ?? []).join(' ').toLowerCase()
+  if (cluster.volatility < MIN_SV_VOLATILITY) return false
 
-  // 1. Label must contain a tech keyword — this is the primary gate
-  const labelIsTech = TECH_LABEL_KEYWORDS.some(kw => label.includes(kw))
-  if (!labelIsTech) return false
+  const label = (cluster.label ?? '').toLowerCase()
 
-  // 2. Additionally require at least one SV primary entity in orgs, locs, or label
-  const svOrgCount = orgs.filter(o => {
-    const ol = o.toLowerCase()
-    return SV_PRIMARY.some(sv => ol === sv || ol.startsWith(sv + ' ') || ol.includes(' ' + sv))
-  }).length
+  // Hard-exclude obvious noise regardless of any other signals
+  if (NOISE_LABEL_TERMS.some(n => label.includes(n))) return false
 
-  const svLocMatch = locs.some(l =>
-    ['san francisco', 'silicon valley', 'bay area', 'san jose', 'cupertino',
-     'menlo park', 'palo alto', 'mountain view', 'sunnyvale', 'seattle'].some(sv =>
-       l.toLowerCase().includes(sv)
-    )
+  // Label must have at least one tech signal (AI, strong tech, or major company + org confirm)
+  const hasAI         = AI_KEYWORDS.some(kw => label.includes(kw))
+  const hasStrongTech = STRONG_TECH_KEYWORDS.some(kw => label.includes(kw))
+  const orgsLower     = (cluster.entities?.organizations ?? []).map(o => o.toLowerCase())
+  const hasMajorConfirmed = SV_COMPANIES_MAJOR.some(co =>
+    label.includes(co.trim()) && orgsLower.some(o => o.includes(co.trim()))
+  )
+  const hasSecConfirmed = SV_COMPANIES_SEC.some(co =>
+    label.includes(co.trim()) && orgsLower.some(o => o.includes(co.trim()))
   )
 
-  const svLabelMatch = SV_PRIMARY.some(sv => label.includes(sv))
-  const svBulletMatch = SV_PRIMARY.some(sv => bullets.includes(sv))
+  if (!hasAI && !hasStrongTech && !hasMajorConfirmed && !hasSecConfirmed) return false
 
-  return svOrgCount >= 1 || svLocMatch || svLabelMatch || svBulletMatch
+  // Require minimum composite SV relevance score
+  return svScore(cluster) >= 5
 }
 
 function isFundingCluster(cluster: EventCluster): boolean {
-  const label = (cluster.label ?? '').toLowerCase()
+  if (!isSVCluster(cluster)) return false
+  const label   = (cluster.label ?? '').toLowerCase()
   const bullets = (cluster.bullets ?? []).join(' ').toLowerCase()
   return FUNDING_KEYWORDS.some(kw => label.includes(kw.toLowerCase()) || bullets.includes(kw.toLowerCase()))
+}
+
+// Article noise — exclude even from tech sources if these dominate the headline
+const ARTICLE_NOISE_TERMS = [
+  'drone strike', 'missile attack', 'military offensive',
+  'hurricane ', 'earthquake ', 'wildfire', 'tsunami',
+  ' nba ', ' nfl ', ' mlb ', 'world cup ', 'olympic',
+  'drug cartel', 'fentanyl', 'opioid',
+  'box office ', 'film awards', 'oscars',
+]
+
+function isTechArticle(article: RawArticle): boolean {
+  if (!article.title) return false
+  const src   = article.source_id ?? ''
+  const title = article.title.toLowerCase()
+
+  // Block hard noise even from tech sources
+  if (ARTICLE_NOISE_TERMS.some(n => title.includes(n))) return false
+
+  const hasTechKw  = TECH_ALL_KEYWORDS.some(kw => title.includes(kw))
+  const hasSVEntity = SV_ALL.some(sv => title.includes(sv.trim()))
+
+  // Dedicated tech source: include if title has any tech signal
+  if (TECH_SOURCE_IDS.has(src)) return hasTechKw || hasSVEntity
+
+  // General news source: need both a tech keyword AND an SV entity
+  return hasTechKw && hasSVEntity
 }
 
 function timeAgo(iso: string | null): string {
@@ -417,7 +544,7 @@ export function TechValleyView({ onClusterSelect }: Props) {
   const svClusters = useMemo(() =>
     allClusters
       .filter(isSVCluster)
-      .sort((a, b) => b.volatility - a.volatility),
+      .sort((a, b) => (svScore(b) * b.volatility) - (svScore(a) * a.volatility)),
     [allClusters]
   )
 
@@ -429,19 +556,7 @@ export function TechValleyView({ onClusterSelect }: Props) {
   )
 
   const techArticles = useMemo(() =>
-    articles
-      .filter(a => {
-        if (!a.title) return false
-        const src   = a.source_id ?? ''
-        const title = a.title.toLowerCase()
-        // Dedicated tech sources always included
-        if (TECH_SOURCE_IDS.has(src)) return true
-        // For general sources, require a tech keyword AND SV primary entity in title
-        const hasTechKw   = TECH_LABEL_KEYWORDS.some(kw => title.includes(kw))
-        const hasSVEntity = SV_PRIMARY.some(sv => title.includes(sv))
-        return hasTechKw && hasSVEntity
-      })
-      .slice(0, 60),
+    articles.filter(isTechArticle).slice(0, 80),
     [articles]
   )
 
