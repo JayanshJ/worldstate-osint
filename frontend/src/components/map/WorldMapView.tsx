@@ -230,8 +230,8 @@ export function WorldMapView({ onClusterSelect }: Props) {
   const handleCountryClick = useCallback((name: string) => {
     setSelectedCountry(name)
     setSelectedVessel(null)
-    openSearch(name)
-  }, [openSearch])
+    setSearchResult(null)   // clear any previous vessel search
+  }, [])
 
   const handleVesselClick = useCallback((zone: VesselZone) => {
     setSelectedVessel(zone)
@@ -588,7 +588,35 @@ export function WorldMapView({ onClusterSelect }: Props) {
 
             {/* Panel body */}
             <div className="flex-1 overflow-y-auto scrollbar-thin">
-              {searching ? (
+              {selectedCountry ? (
+                // Country: show only clusters genuinely tagged to this country
+                (() => {
+                  const cc = countryActivity.get(selectedCountry)?.clusters ?? []
+                  if (cc.length === 0) return (
+                    <div className="flex flex-col items-center justify-center h-32 gap-2 text-terminal-dim/60 font-mono text-xs">
+                      <Globe size={24} className="text-terminal-dim/30" />
+                      No active clusters
+                    </div>
+                  )
+                  return (
+                    <div>
+                      <div className="px-4 py-2 text-[9px] font-mono text-terminal-dim tracking-widest border-b border-terminal-border bg-terminal-surface/50 uppercase">
+                        Event Clusters ({cc.length})
+                      </div>
+                      {cc
+                        .slice()
+                        .sort((a, b) => b.volatility - a.volatility)
+                        .map(c => (
+                          <MapClusterFromEventCluster
+                            key={c.id}
+                            cluster={c}
+                            onSelect={() => onClusterSelect?.(c.id)}
+                          />
+                        ))}
+                    </div>
+                  )
+                })()
+              ) : searching ? (
                 <div className="flex items-center justify-center h-32 gap-2 text-terminal-dim font-mono text-xs">
                   <Loader2 size={14} className="animate-spin text-terminal-accent" />
                   Scanning intelligence...
@@ -614,7 +642,6 @@ export function WorldMapView({ onClusterSelect }: Props) {
                       ))}
                     </div>
                   )}
-
                   {searchResult.article_hits.length > 0 && (
                     <div>
                       <div className="px-4 py-2 text-[9px] font-mono text-terminal-dim tracking-widest border-b border-terminal-border bg-terminal-surface/50 uppercase">
@@ -628,14 +655,6 @@ export function WorldMapView({ onClusterSelect }: Props) {
                 </div>
               )}
             </div>
-
-            {searchResult && searchResult.total > 0 && (
-              <div className="px-4 py-2 border-t border-terminal-border flex-shrink-0 bg-terminal-surface/30">
-                <span className="text-[9px] font-mono text-terminal-dim">
-                  {searchResult.total} results · keyword match
-                </span>
-              </div>
-            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -643,7 +662,32 @@ export function WorldMapView({ onClusterSelect }: Props) {
   )
 }
 
-// ─── Cluster row ──────────────────────────────────────────────────────────────
+// ─── Cluster row (from EventCluster — used for country panels) ───────────────
+function MapClusterFromEventCluster({ cluster, onSelect }: { cluster: EventCluster; onSelect: () => void }) {
+  return (
+    <button
+      onClick={onSelect}
+      className="w-full flex items-start gap-3 px-4 py-3 border-b border-terminal-border/40 hover:bg-terminal-muted/30 transition-colors text-left group"
+    >
+      <div className="flex-shrink-0 mt-0.5">
+        <VolatilityBadge volatility={cluster.volatility} size="sm" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-mono text-[11px] text-terminal-text group-hover:text-terminal-accent transition-colors line-clamp-2 leading-relaxed">
+          {cluster.label ?? 'Unnamed cluster'}
+        </p>
+        {cluster.bullets?.[0] && (
+          <p className="font-mono text-[10px] text-terminal-dim mt-1 line-clamp-1">
+            {cluster.bullets[0]}
+          </p>
+        )}
+      </div>
+      <ChevronRight size={11} className="flex-shrink-0 mt-0.5 text-terminal-dim group-hover:text-terminal-accent transition-colors" />
+    </button>
+  )
+}
+
+// ─── Cluster row (from search ClusterHit — used for vessel panels) ────────────
 function MapClusterRow({ hit, onSelect }: { hit: ClusterHit; onSelect: () => void }) {
   return (
     <button
