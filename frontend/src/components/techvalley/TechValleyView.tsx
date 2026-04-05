@@ -10,7 +10,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Cpu, DollarSign, Newspaper, RefreshCw, ExternalLink } from 'lucide-react'
+import { Cpu, DollarSign, Newspaper, RefreshCw, ExternalLink, Sparkles, ChevronDown, ChevronUp } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { EventCluster, RawArticle } from '@/types'
 import { getVolatilityTier, VOLATILITY_COLORS } from '@/types'
@@ -279,6 +279,89 @@ function ArticleRow({ article }: { article: RawArticle }) {
   )
 }
 
+// ─── AI Summary panel ─────────────────────────────────────────────────────────
+
+function SVAISummary({ clusters }: { clusters: EventCluster[] }) {
+  const [analysis, setAnalysis]   = useState<string | null>(null)
+  const [loading,  setLoading]    = useState(false)
+  const [expanded, setExpanded]   = useState(true)
+  const [topId,    setTopId]      = useState<string | null>(null)
+  const [error,    setError]      = useState(false)
+
+  // Pick the highest-volatility SV cluster and deepdive it
+  useEffect(() => {
+    if (clusters.length === 0) return
+    const top = clusters[0]
+    if (top.id === topId) return   // already loaded for this cluster
+    setTopId(top.id)
+    setAnalysis(null)
+    setLoading(true)
+    setError(false)
+    api.clusters.deepdive(top.id)
+      .then(res => { setAnalysis(res.analysis); setLoading(false) })
+      .catch(() => { setError(true); setLoading(false) })
+  }, [clusters, topId])
+
+  const topCluster = clusters[0]
+
+  return (
+    <div className="border-b border-terminal-border flex-shrink-0 bg-terminal-surface/20">
+      <button
+        onClick={() => setExpanded(v => !v)}
+        className="w-full flex items-center gap-2 px-4 py-2 hover:bg-terminal-muted/20 transition-colors"
+      >
+        <Sparkles size={10} className="text-terminal-accent flex-shrink-0" />
+        <span className="text-[9px] font-mono tracking-widest text-terminal-accent">AI BRIEFING</span>
+        {topCluster && (
+          <span className="text-[8px] font-mono text-terminal-dim/50 truncate flex-1 text-left ml-1">
+            — {topCluster.label}
+          </span>
+        )}
+        {loading && <span className="text-[7px] font-mono text-terminal-dim/40 animate-pulse ml-auto">generating…</span>}
+        {expanded ? <ChevronUp size={9} className="text-terminal-dim/40 flex-shrink-0 ml-auto" /> : <ChevronDown size={9} className="text-terminal-dim/40 flex-shrink-0 ml-auto" />}
+      </button>
+
+      <AnimatePresence>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="overflow-hidden"
+          >
+            <div className="px-4 pb-3">
+              {loading && (
+                <div className="space-y-1.5 py-1">
+                  {[1, 2, 3, 4].map(i => (
+                    <div key={i} className="h-2 bg-terminal-surface rounded animate-pulse"
+                      style={{ width: `${[100, 92, 96, 78][i - 1]}%` }} />
+                  ))}
+                </div>
+              )}
+              {error && (
+                <p className="text-[9px] font-mono text-terminal-dim/40 italic py-1">
+                  Analysis unavailable — click a cluster for details.
+                </p>
+              )}
+              {analysis && (
+                <p className="text-[10px] font-mono text-terminal-dim/80 leading-relaxed whitespace-pre-wrap">
+                  {analysis}
+                </p>
+              )}
+              {!loading && !error && !analysis && clusters.length === 0 && (
+                <p className="text-[9px] font-mono text-terminal-dim/40 italic py-1">
+                  No active SV clusters to summarize.
+                </p>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 interface Props {
@@ -374,6 +457,9 @@ export function TechValleyView({ onClusterSelect }: Props) {
     <div className="flex flex-col h-full min-h-0 overflow-hidden">
       {/* Stock strip */}
       <StockStrip onTickerClick={ticker => (window.location.href = `/splc/${ticker}`)} />
+
+      {/* AI Summary */}
+      {svClusters.length > 0 && <SVAISummary clusters={svClusters} />}
 
       {/* Tab bar */}
       <div className="flex items-center gap-1 px-3 py-2 border-b border-terminal-border bg-terminal-surface/30 flex-shrink-0">
