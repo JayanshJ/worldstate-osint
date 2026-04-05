@@ -22,21 +22,29 @@ import { useWebSocket } from '@/context/WebSocketContext'
 
 // ─── SV company universe ─────────────────────────────────────────────────────
 
-const SV_COMPANIES = [
-  // Magnificent 7
-  'Apple', 'Microsoft', 'Nvidia', 'Alphabet', 'Google', 'Meta', 'Amazon', 'Tesla',
-  // Big Tech SV
-  'Netflix', 'Salesforce', 'Oracle', 'Intel', 'AMD', 'Qualcomm', 'Broadcom', 'Cisco',
-  // Hot startups / unicorns
-  'OpenAI', 'Anthropic', 'xAI', 'Mistral', 'Perplexity', 'Databricks', 'Stripe',
-  'SpaceX', 'Palantir', 'Rivian', 'Lyft', 'Uber', 'Airbnb', 'DoorDash', 'Coinbase',
-  'Snowflake', 'Cloudflare', 'CrowdStrike', 'Okta', 'Twilio', 'Slack',
-  // VCs / acquirers (news often mentions them)
-  'Sequoia', 'Andreessen Horowitz', 'a16z', 'Y Combinator', 'SoftBank',
-  'Benchmark', 'Kleiner Perkins', 'General Catalyst',
+// Primary SV companies — a cluster must primarily be about these to qualify
+const SV_PRIMARY = [
+  'apple', 'microsoft', 'nvidia', 'alphabet', 'google', 'meta', 'amazon', 'tesla',
+  'netflix', 'salesforce', 'oracle', 'intel', 'amd', 'qualcomm', 'broadcom', 'cisco',
+  'openai', 'anthropic', 'xai', 'mistral', 'perplexity', 'databricks', 'stripe',
+  'spacex', 'palantir', 'rivian', 'lyft', 'uber', 'airbnb', 'doordash', 'coinbase',
+  'snowflake', 'cloudflare', 'crowdstrike', 'okta', 'twilio', 'slack', 'zoom',
+  'sequoia', 'andreessen horowitz', 'a16z', 'y combinator', 'softbank', 'sam altman',
+  'elon musk', 'mark zuckerberg', 'sundar pichai', 'satya nadella', 'jensen huang',
+  'semiconductor', 'silicon valley', 'san francisco tech',
 ]
 
-const SV_NORM = SV_COMPANIES.map(n => n.toLowerCase())
+// Tech label keywords — cluster label must contain one of these OR 2+ primary orgs
+const TECH_LABEL_KEYWORDS = [
+  'ai ', 'artificial intelligence', 'machine learning', 'llm', 'chatgpt', 'gpt',
+  'semiconductor', 'chip', 'microchip', 'silicon', 'tech ', 'technology',
+  'startup', 'venture', 'funding', 'ipo', 'unicorn', 'software', 'hardware',
+  'cloud', 'saas', 'cybersecurity', 'data center', 'gpu', 'cpu', 'smartphone',
+  'autonomous', 'self-driving', 'electric vehicle', 'ev ', 'robotics', 'drone',
+  'crypto', 'blockchain', 'defi', 'nft', 'web3',
+  'apple', 'google', 'microsoft', 'nvidia', 'openai', 'anthropic', 'tesla',
+  'meta ', 'amazon', 'netflix', 'uber', 'airbnb', 'stripe',
+]
 
 const FUNDING_KEYWORDS = [
   'raises', 'funding', 'Series A', 'Series B', 'Series C', 'IPO', 'valuation',
@@ -46,7 +54,6 @@ const FUNDING_KEYWORDS = [
 const TECH_SOURCE_IDS = new Set([
   'techcrunch', 'wired', 'ars_technica', 'the_verge', 'engadget',
   'mit_technology_review', 'venturebeat', 'bloomberg_tech',
-  'reuters', 'cnbc', 'fortune', 'business_insider',
 ])
 
 // ─── Stock price strip ───────────────────────────────────────────────────────
@@ -149,15 +156,32 @@ function StockStrip({ onTickerClick }: { onTickerClick: (ticker: string) => void
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function isSVCluster(cluster: EventCluster): boolean {
-  const orgs  = cluster.entities?.organizations ?? []
-  const locs  = cluster.entities?.locations ?? []
-  const label = (cluster.label ?? '').toLowerCase()
+  const orgs   = cluster.entities?.organizations ?? []
+  const locs   = cluster.entities?.locations ?? []
+  const label  = (cluster.label ?? '').toLowerCase()
+  const bullets = (cluster.bullets ?? []).join(' ').toLowerCase()
 
-  const orgMatch = orgs.some(o => SV_NORM.some(sv => o.toLowerCase().includes(sv) || sv.includes(o.toLowerCase().split(' ')[0])))
-  const locMatch = locs.some(l => ['san francisco', 'silicon valley', 'bay area', 'san jose', 'cupertino', 'menlo park', 'palo alto', 'mountain view', 'sunnyvale'].some(sv => l.toLowerCase().includes(sv)))
-  const labelMatch = SV_NORM.some(sv => label.includes(sv))
+  // 1. Label must contain a tech keyword — this is the primary gate
+  const labelIsTech = TECH_LABEL_KEYWORDS.some(kw => label.includes(kw))
+  if (!labelIsTech) return false
 
-  return orgMatch || locMatch || labelMatch
+  // 2. Additionally require at least one SV primary entity in orgs, locs, or label
+  const svOrgCount = orgs.filter(o => {
+    const ol = o.toLowerCase()
+    return SV_PRIMARY.some(sv => ol === sv || ol.startsWith(sv + ' ') || ol.includes(' ' + sv))
+  }).length
+
+  const svLocMatch = locs.some(l =>
+    ['san francisco', 'silicon valley', 'bay area', 'san jose', 'cupertino',
+     'menlo park', 'palo alto', 'mountain view', 'sunnyvale', 'seattle'].some(sv =>
+       l.toLowerCase().includes(sv)
+    )
+  )
+
+  const svLabelMatch = SV_PRIMARY.some(sv => label.includes(sv))
+  const svBulletMatch = SV_PRIMARY.some(sv => bullets.includes(sv))
+
+  return svOrgCount >= 1 || svLocMatch || svLabelMatch || svBulletMatch
 }
 
 function isFundingCluster(cluster: EventCluster): boolean {
@@ -325,11 +349,14 @@ export function TechValleyView({ onClusterSelect }: Props) {
     articles
       .filter(a => {
         if (!a.title) return false
-        const src = a.source_id ?? ''
-        // Include tech sources OR articles mentioning SV companies
-        const srcMatch = TECH_SOURCE_IDS.has(src)
-        const titleMatch = SV_NORM.some(sv => a.title?.toLowerCase().includes(sv))
-        return srcMatch || titleMatch
+        const src   = a.source_id ?? ''
+        const title = a.title.toLowerCase()
+        // Dedicated tech sources always included
+        if (TECH_SOURCE_IDS.has(src)) return true
+        // For general sources, require a tech keyword AND SV primary entity in title
+        const hasTechKw   = TECH_LABEL_KEYWORDS.some(kw => title.includes(kw))
+        const hasSVEntity = SV_PRIMARY.some(sv => title.includes(sv))
+        return hasTechKw && hasSVEntity
       })
       .slice(0, 60),
     [articles]
