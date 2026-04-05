@@ -1212,13 +1212,13 @@ function EntityDetailDrawer({ edge, onClose }: {
                     )}
 
                     {(research.risk_indicators.length > 0 || research.known_affiliations.length > 0) && (
-                      <div className="grid grid-cols-2 gap-2 border-t border-terminal-border pt-2">
+                      <div className="space-y-2 border-t border-terminal-border pt-2">
                         {research.risk_indicators.length > 0 && (
                           <div>
                             <div className="text-[8px] font-mono text-red-400 tracking-widest mb-1">RISK FLAGS</div>
-                            <ul className="space-y-0.5">
+                            <ul className="space-y-1">
                               {research.risk_indicators.map((r, i) => (
-                                <li key={i} className="text-[8px] font-mono text-red-400/80 truncate" title={r}>• {r}</li>
+                                <li key={i} className="text-[8px] font-mono text-red-400/80 leading-relaxed">• {r}</li>
                               ))}
                             </ul>
                           </div>
@@ -1226,9 +1226,9 @@ function EntityDetailDrawer({ edge, onClose }: {
                         {research.known_affiliations.length > 0 && (
                           <div>
                             <div className="text-[8px] font-mono text-terminal-dim tracking-widest mb-1">AFFILIATIONS</div>
-                            <ul className="space-y-0.5">
-                              {research.known_affiliations.slice(0, 3).map((a, i) => (
-                                <li key={i} className="text-[8px] font-mono text-terminal-dim/70 truncate" title={a}>• {a}</li>
+                            <ul className="space-y-1">
+                              {research.known_affiliations.map((a, i) => (
+                                <li key={i} className="text-[8px] font-mono text-terminal-dim/70 leading-relaxed">• {a}</li>
                               ))}
                             </ul>
                           </div>
