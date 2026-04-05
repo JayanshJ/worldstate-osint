@@ -52,21 +52,37 @@ function normaliseCountry(raw: string): string {
 }
 
 function extractCountriesFromCluster(cluster: EventCluster): string[] {
-  const found = new Set<string>()
+  // Count how many times each country appears across all entity mentions
+  const counts = new Map<string, number>()
+  const add = (raw: string) => {
+    const c = normaliseCountry(raw)
+    if (c) counts.set(c, (counts.get(c) ?? 0) + 1)
+  }
+
   for (const loc of cluster.entities?.locations ?? []) {
     const m1 = loc.match(/^([A-Z][^,(]+?)(?:\s*\(|\s*$)/)
-    if (m1) found.add(normaliseCountry(m1[1].trim()))
+    if (m1) add(m1[1].trim())
     const parts = loc.split(',')
     if (parts.length > 1) {
       const last = parts[parts.length - 1].split('(')[0].trim()
-      if (last.length > 1) found.add(normaliseCountry(last))
+      if (last.length > 1) add(last)
     }
   }
   for (const person of cluster.entities?.people ?? []) {
     const m = person.match(/\/([A-Z][A-Za-z\s]+)\)/)
-    if (m) found.add(normaliseCountry(m[1].trim()))
+    if (m) add(m[1].trim())
   }
-  return [...found].filter(Boolean)
+
+  // A cluster belongs to a country only if:
+  //   (a) the country name appears in the cluster label (it's the primary subject), OR
+  //   (b) the country is mentioned 3+ times across entities (dominant, not incidental)
+  const labelText = (cluster.label ?? '').toLowerCase()
+  return [...counts.entries()]
+    .filter(([country, count]) =>
+      count >= 3 || labelText.includes(country.toLowerCase())
+    )
+    .map(([country]) => country)
+    .filter(Boolean)
 }
 
 function activityColor(maxVol: number, count: number): string {
