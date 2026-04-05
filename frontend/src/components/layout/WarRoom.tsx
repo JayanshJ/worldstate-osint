@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useLocation, useRoute } from 'wouter'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Activity, GitBranch, Globe, LayoutDashboard, Zap } from 'lucide-react'
+import { Activity, GitBranch, Globe, LayoutDashboard, Zap, Cpu } from 'lucide-react'
 import { Header } from './Header'
 import { StatsBar } from './StatsBar'
 import { Ticker } from '@/components/ticker/Ticker'
@@ -14,28 +14,31 @@ import { WorldMapView } from '@/components/map/WorldMapView'
 import { StrategyFeed } from '@/components/strategies/StrategyFeed'
 import { SupplyChainView } from '@/components/supply-chain/SupplyChainView'
 import { SignalsPanel } from '@/components/signals/SignalsPanel'
+import { TechValleyView } from '@/components/techvalley/TechValleyView'
 import { AccountSettings } from '@/components/auth/AccountSettings'
 import { AdminPanel } from '@/components/admin/AdminPanel'
 import { OnboardingTour, useOnboarding } from '@/components/onboarding/OnboardingTour'
 import { useAlerts } from '@/hooks/useAlerts'
 import { cn } from '@/lib/utils'
 
-type ViewMode    = 'dashboard' | 'map' | 'alpha' | 'splc' | 'signals'
+type ViewMode    = 'dashboard' | 'map' | 'alpha' | 'splc' | 'signals' | 'techvalley'
 type MobilePanel = 'clusters' | 'feed'
 
 const VIEW_PATHS: Record<ViewMode, string> = {
-  dashboard: '/',
-  map:       '/map',
-  alpha:     '/alpha',
-  splc:      '/splc',
-  signals:   '/signals',
+  dashboard:  '/',
+  map:        '/map',
+  alpha:      '/alpha',
+  splc:       '/splc',
+  signals:    '/signals',
+  techvalley: '/techvalley',
 }
 
 function pathToView(path: string): ViewMode {
-  if (path.startsWith('/map'))     return 'map'
-  if (path.startsWith('/alpha'))   return 'alpha'
-  if (path.startsWith('/splc'))    return 'splc'
-  if (path.startsWith('/signals')) return 'signals'
+  if (path.startsWith('/map'))        return 'map'
+  if (path.startsWith('/alpha'))      return 'alpha'
+  if (path.startsWith('/splc'))       return 'splc'
+  if (path.startsWith('/signals'))    return 'signals'
+  if (path.startsWith('/techvalley')) return 'techvalley'
   return 'dashboard'
 }
 
@@ -122,11 +125,12 @@ export function WarRoom() {
         {/* View toggle — full width on mobile, border-left on desktop */}
         <div className="flex items-center gap-1 px-3 border-terminal-border bg-terminal-surface flex-1 md:flex-none md:border-l justify-center md:justify-start">
           {([
-            { mode: 'dashboard' as ViewMode, icon: LayoutDashboard, label: 'FEED'    },
-            { mode: 'map'       as ViewMode, icon: Globe,            label: 'MAP'     },
-            { mode: 'alpha'     as ViewMode, icon: Zap,              label: 'ALPHA'   },
-            { mode: 'signals'   as ViewMode, icon: Activity,         label: 'SIGNALS' },
-            { mode: 'splc'      as ViewMode, icon: GitBranch,        label: 'SPLC'    },
+            { mode: 'dashboard'  as ViewMode, icon: LayoutDashboard, label: 'FEED'     },
+            { mode: 'map'        as ViewMode, icon: Globe,            label: 'MAP'      },
+            { mode: 'alpha'      as ViewMode, icon: Zap,              label: 'ALPHA'    },
+            { mode: 'signals'    as ViewMode, icon: Activity,         label: 'SIGNALS'  },
+            { mode: 'splc'       as ViewMode, icon: GitBranch,        label: 'SPLC'     },
+            { mode: 'techvalley' as ViewMode, icon: Cpu,              label: 'SV'       },
           ] as const).map(({ mode, icon: Icon, label }) => (
             <button
               key={mode}
@@ -240,6 +244,17 @@ export function WarRoom() {
                 initialTicker={splcTicker}
                 onTickerChange={handleSplcTickerChange}
               />
+            </motion.div>
+          ) : viewMode === 'techvalley' ? (
+            <motion.div
+              key="techvalley"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="flex-1 min-w-0 overflow-hidden"
+            >
+              <TechValleyView onClusterSelect={openCluster} />
             </motion.div>
           ) : null}
         </AnimatePresence>
