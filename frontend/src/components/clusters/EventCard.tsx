@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ChevronDown, ChevronUp, ExternalLink } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { EventCluster } from '@/types'
@@ -11,6 +11,7 @@ import { cn, formatSentiment as fmtSent, formatAbsTime, formatDateTime } from '@
 import { useTimezone } from '@/context/TimezoneContext'
 import { VolatilityBadge } from '@/components/ui/VolatilityBadge'
 import { EntityPills } from '@/components/ui/EntityPills'
+import { api, type ClusterMemberDetail } from '@/lib/api'
 
 // Re-export since formatSentiment is in both places
 function fmt(s: number) {
@@ -26,8 +27,26 @@ interface Props {
 }
 
 export function EventCard({ cluster, isNew, isUpdated, onSelect }: Props) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded]   = useState(false)
+  const [members, setMembers]     = useState<ClusterMemberDetail[] | null>(null)
+  const [membersLoading, setMembersLoading] = useState(false)
   const { timezone } = useTimezone()
+
+  // Lazy-load article members when the card is expanded
+  useEffect(() => {
+    if (!expanded || members !== null) return
+    setMembersLoading(true)
+    api.clusters.get(cluster.id)
+      .then(data => {
+        setMembers(
+          [...data.members].sort((a, b) =>
+            (b.credibility_score ?? 0) - (a.credibility_score ?? 0)
+          )
+        )
+        setMembersLoading(false)
+      })
+      .catch(() => setMembersLoading(false))
+  }, [expanded, cluster.id, members])
 
   const tier   = getVolatilityTier(cluster.volatility)
   const color  = VOLATILITY_COLORS[tier]
@@ -148,20 +167,18 @@ export function EventCard({ cluster, isNew, isUpdated, onSelect }: Props) {
         )}
       </div>
 
-      {/* Expand toggle */}
-      {cluster.entities && (
-        <button
-          onClick={e => { e.stopPropagation(); setExpanded(v => !v) }}
-          className="w-full flex items-center justify-center gap-1 py-1 text-[10px] text-terminal-dim hover:text-terminal-text transition-colors border-t border-terminal-border font-mono"
-        >
-          {expanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-          {expanded ? 'LESS' : 'DETAILS'}
-        </button>
-      )}
+      {/* Expand toggle — always available to load source articles */}
+      <button
+        onClick={e => { e.stopPropagation(); setExpanded(v => !v) }}
+        className="w-full flex items-center justify-center gap-1 py-1 text-[10px] text-terminal-dim hover:text-terminal-text transition-colors border-t border-terminal-border font-mono"
+      >
+        {expanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+        {expanded ? 'HIDE' : `SOURCES (${cluster.member_count})`}
+      </button>
 
-      {/* Expanded: full entities + timestamps */}
+      {/* Expanded: source articles + entities */}
       <AnimatePresence>
-        {expanded && cluster.entities && (
+        {expanded && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
@@ -170,13 +187,45 @@ export function EventCard({ cluster, isNew, isUpdated, onSelect }: Props) {
             className="overflow-hidden"
           >
             <div className="px-3 pb-3 space-y-2 border-t border-terminal-border">
-              <div className="pt-2">
-                <EntityPills entities={cluster.entities} max={8} />
-              </div>
-              <div className="flex gap-4 text-[10px] text-terminal-dim font-mono">
+              {/* Source articles */}
+              {membersLoading && (
+                <div className="pt-2 space-y-1.5">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className="h-8 bg-terminal-muted/40 rounded-sm animate-pulse" />
+                  ))}
+                </div>
+              )}
+              {members && members.length > 0 && (
+                <div className="pt-2 space-y-1.5">
+                  {members.map(m => (
+                    <a
+                      key={m.article_id}
+                      href={m.url ?? '#'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={e => e.stopPropagation()}
+                      className="block px-2 py-1.5 bg-terminal-bg border border-terminal-border hover:border-terminal-accent/40 rounded-sm transition-colors group"
+                    >
+                      <div className="font-mono text-[10px] text-terminal-text group-hover:text-terminal-accent transition-colors leading-snug">
+                        {m.title}
+                      </div>
+                      <div className="flex items-center justify-between mt-0.5 text-[8px] font-mono text-terminal-dim/50">
+                        <span>{(m.source_id ?? '').toUpperCase().replace(/_/g, ' ')}</span>
+                        {m.published_at && <span>{new Date(m.published_at).toLocaleDateString()}</span>}
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              )}
+              {/* Entity pills */}
+              {cluster.entities && (
+                <div className="pt-1">
+                  <EntityPills entities={cluster.entities} max={8} />
+                </div>
+              )}
+              <div className="flex gap-4 text-[9px] text-terminal-dim/40 font-mono pt-1">
                 <span>FIRST: {formatDateTime(cluster.first_seen_at, timezone)}</span>
-                <span>LAST:  {formatDateTime(cluster.last_updated_at, timezone)}</span>
-                <span>ID: {cluster.id.slice(0, 8)}</span>
+                <span>LAST: {formatDateTime(cluster.last_updated_at, timezone)}</span>
               </div>
             </div>
           </motion.div>

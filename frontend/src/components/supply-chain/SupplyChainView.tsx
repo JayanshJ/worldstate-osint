@@ -951,9 +951,33 @@ function EventDetailView({ eventId, onBack }: { eventId: string, onBack: () => v
               )}
             </div>
 
+            {/* Sources — shown first so articles are immediately visible */}
+            <div>
+              <div className="text-[9px] font-mono tracking-widest text-terminal-dim mb-2 border-b border-terminal-border/50 pb-1">
+                SOURCE ARTICLES ({cluster.members.length})
+              </div>
+              <div className="flex flex-col gap-2">
+                {cluster.members
+                  .slice()
+                  .sort((a: any, b: any) => (b.credibility_score ?? 0) - (a.credibility_score ?? 0))
+                  .map((m: any) => (
+                    <a key={m.article_id} href={m.url ?? '#'} target="_blank" rel="noopener noreferrer"
+                      className="block p-2 bg-terminal-bg border border-terminal-border hover:border-terminal-accent/50 rounded-sm transition-colors group">
+                      <div className="text-[10px] font-mono text-terminal-text group-hover:text-terminal-accent transition-colors leading-snug mb-1">
+                        {m.title}
+                      </div>
+                      <div className="flex justify-between items-center text-[8px] font-mono text-terminal-dim/60">
+                        <span>{(m.source_id ?? '').toUpperCase().replace(/_/g, ' ')}</span>
+                        {m.published_at && <span>{new Date(m.published_at).toLocaleDateString()}</span>}
+                      </div>
+                    </a>
+                  ))}
+              </div>
+            </div>
+
             {/* AI Deep Dive Section */}
             <div>
-              <div className="text-[9px] font-mono tracking-widest text-terminal-accent mb-2 border-b border-terminal-accent/20 pb-1">AI DETAILED SUMMARY</div>
+              <div className="text-[9px] font-mono tracking-widest text-terminal-accent mb-2 border-b border-terminal-accent/20 pb-1">AI ANALYSIS</div>
               <div className="text-[10px] font-mono text-terminal-text leading-[1.6] space-y-3 whitespace-pre-wrap">
                 {analysis ? analysis : loading ? (
                   <div className="space-y-2 py-2">
@@ -967,25 +991,6 @@ function EventDetailView({ eventId, onBack }: { eventId: string, onBack: () => v
                   <span className="italic text-terminal-dim/50">Analysis unavailable.</span>
                 )}
               </div>
-            </div>
-
-            {/* Sources */}
-            <div>
-               <div className="text-[9px] font-mono tracking-widest text-terminal-dim mb-2 border-b border-terminal-border/50 pb-1">SOURCE ARTICLES ({cluster.members.length})</div>
-               <div className="flex flex-col gap-2">
-                 {cluster.members.map((m: any) => (
-                   <a key={m.article_id} href={m.url} target="_blank" rel="noopener noreferrer" 
-                      className="block p-2 bg-terminal-bg border border-terminal-border hover:border-terminal-accent/50 rounded transition-colors group">
-                     <div className="text-[10px] font-mono font-bold text-terminal-text group-hover:text-terminal-accent transition-colors line-clamp-2 leading-snug mb-1">
-                       {m.title}
-                     </div>
-                     <div className="flex justify-between items-center text-[8px] font-mono text-terminal-dim">
-                       <span>{m.source_id.toUpperCase().replace('_', ' ')}</span>
-                       {m.published_at && <span>{new Date(m.published_at).toLocaleDateString()}</span>}
-                     </div>
-                   </a>
-                 ))}
-               </div>
             </div>
           </>
         )}
