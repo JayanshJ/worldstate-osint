@@ -24,6 +24,7 @@ from app.intelligence.splc_extractor import (
     search_companies_by_name,
 )
 from app.models.supply_chain import SCCompany, SCEdge
+from app.models.article import EventCluster
 
 from app.core.security import get_current_user
 router = APIRouter(dependencies=[Depends(get_current_user)])
@@ -248,3 +249,180 @@ async def get_graph(
         })
 
     return {"nodes": nodes, "links": links, "company": _company_dict(company)}
+
+
+@router.get("/{ticker}/disruptions")
+async def get_disruptions(
+    ticker: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Return active event clusters whose key_entities match this company's
+    upstream/downstream supply chain partners.
+
+    Each result includes which edges (supplier/customer names) triggered the match.
+    """
+    ticker = ticker.upper().strip()
+    res = await db.execute(
+        select(SCCompany)
+        .where(SCCompany.ticker == ticker)
+        .options(selectinload(SCCompany.edges))
+    )
+    company = res.scalar_one_or_none()
+    if company is None:
+        raise HTTPException(status_code=404, detail=f"No supply chain data for {ticker}")
+
+    # Build set of entity names (suppliers + customers) and countries
+    edges = _dedup_edges(company.edges)
+    supply_entities: set[str] = set()
+    supply_countries: set[str] = set()
+    for e in edges:
+        if e.direction in ("UPSTREAM", "DOWNSTREAM"):
+            # normalised lower name for matching
+            supply_entities.add(e.entity_name.lower())
+            # also first word (e.g. "TSMC" from "Taiwan Semiconductor Manufacturing")
+            supply_entities.add(e.entity_name.split()[0].lower())
+            if e.hq_country:
+                supply_countries.add(e.hq_country.lower())
+    # Also add the company name itself
+    if company.legal_name:
+        supply_entities.add(company.legal_name.lower())
+        supply_entities.add(company.legal_name.split()[0].lower())
+    supply_entities.add(ticker.lower())
+
+    # Load active clusters (volatile, not expired)
+    from datetime import datetime, timezone
+    cluster_res = await db.execute(
+        select(EventCluster)
+        .where(EventCluster.volatility >= 0.3)
+        .order_by(EventCluster.volatility.desc())
+        .limit(200)
+    )
+    clusters = cluster_res.scalars().all()
+
+    results = []
+    for cluster in clusters:
+        if not cluster.key_entities:
+            continue
+
+        orgs  = [o.lower() for o in (cluster.key_entities.get("organizations") or [])]
+        locs  = [l.lower() for l in (cluster.key_entities.get("locations") or [])]
+        label = (cluster.label or "").lower()
+
+        # Find which supply chain entities triggered a match
+        affected_edges: list[str] = []
+        for e in edges:
+            if e.direction not in ("UPSTREAM", "DOWNSTREAM"):
+                continue
+            name   = e.entity_name.lower()
+            first  = e.entity_name.split()[0].lower()
+            country = (e.hq_country or "").lower()
+
+            # Match org list or location list or cluster label
+            org_match = any(
+                (name in org or org in name or first in org or org in first)
+                for org in orgs
+            )
+            loc_match = country and any(country in loc or loc in country for loc in locs)
+            label_match = name in label or first in label
+
+            if org_match or loc_match or label_match:
+                affected_edges.append(e.entity_name)
+
+        if not affected_edges:
+            # Also check if ticker/company name appears in orgs
+            ticker_match = any(ticker.lower() in org or org in ticker.lower() for org in orgs)
+            if company.legal_name:
+                ticker_match = ticker_match or any(
+                    company.legal_name.lower().split()[0] in org
+                    for org in orgs
+                )
+            if not ticker_match:
+                continue
+
+        results.append({
+            "cluster_id":   str(cluster.id),
+            "label":        cluster.label,
+            "volatility":   float(cluster.volatility),
+            "bullets":      cluster.summary_bullets,
+            "affected":     list(dict.fromkeys(affected_edges))[:5],  # dedup, max 5
+            "last_updated": cluster.last_updated_at.isoformat() if cluster.last_updated_at else "",
+        })
+
+    # Sort by volatility desc, cap at 20
+    results.sort(key=lambda x: x["volatility"], reverse=True)
+    return results[:20]
+
+
+@router.get("/{ticker}/contagion")
+async def get_contagion(
+    ticker: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Find other analyzed companies that share upstream suppliers with this ticker.
+    Returns: [{shared_supplier, other_tickers: [{ticker, company_name}]}]
+    """
+    ticker = ticker.upper().strip()
+
+    # Load focal company's upstream edges
+    res = await db.execute(
+        select(SCCompany)
+        .where(SCCompany.ticker == ticker)
+        .options(selectinload(SCCompany.edges))
+    )
+    company = res.scalar_one_or_none()
+    if company is None:
+        raise HTTPException(status_code=404, detail=f"No supply chain data for {ticker}")
+
+    focal_edges   = _dedup_edges(company.edges)
+    focal_upstream = {_norm(e.entity_name) for e in focal_edges if e.direction == "UPSTREAM"}
+
+    if not focal_upstream:
+        return []
+
+    # Load all other companies + their edges
+    all_res = await db.execute(
+        select(SCCompany)
+        .where(SCCompany.ticker != ticker)
+        .options(selectinload(SCCompany.edges))
+    )
+    other_companies = all_res.scalars().all()
+
+    # Build: shared_supplier_norm → {ticker: company_name}
+    shared: dict[str, dict[str, str | None]] = {}
+    for oc in other_companies:
+        oc_edges = _dedup_edges(oc.edges)
+        for e in oc_edges:
+            if e.direction != "UPSTREAM":
+                continue
+            norm = _norm(e.entity_name)
+            if norm in focal_upstream:
+                if norm not in shared:
+                    shared[norm] = {}
+                shared[norm][oc.ticker] = oc.legal_name
+
+    if not shared:
+        return []
+
+    # Map norm back to display name (use focal company's edge name)
+    norm_to_display: dict[str, str] = {}
+    for e in focal_edges:
+        if e.direction == "UPSTREAM":
+            norm_to_display[_norm(e.entity_name)] = e.entity_name
+
+    results = [
+        {
+            "shared_supplier": norm_to_display.get(norm, norm),
+            "other_tickers": [
+                {"ticker": t, "company_name": name}
+                for t, name in tickers.items()
+            ],
+        }
+        for norm, tickers in shared.items()
+        if tickers  # only include if at least one other company shares it
+    ]
+
+    # Sort by number of sharing companies (most shared = most systemic risk)
+    results.sort(key=lambda x: len(x["other_tickers"]), reverse=True)
+    return results[:25]

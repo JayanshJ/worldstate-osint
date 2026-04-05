@@ -16,7 +16,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Search, Loader2, AlertTriangle, X,
-  GitBranch, Table2, Trash2, RefreshCw, BarChart2,
+  GitBranch, Table2, Trash2, RefreshCw, BarChart2, Bell,
 } from 'lucide-react'
 import { api, type SCCompany, type SCEdge, type SCSearchResult, type CompanyProfile, type SearchResponse, type ClusterMemberDetail } from '@/lib/api'
 import type { EventCluster } from '@/types'
@@ -330,6 +330,35 @@ function FocalDrawer({ company, edges, onClose }: {
   company: SCCompany; edges: SCEdge[]; onClose: () => void
 }) {
   const { profile, loading: profileLoading } = useNodeProfile(company.ticker)
+  const [alertsCreated, setAlertsCreated] = useState(false)
+  const [alertsLoading, setAlertsLoading] = useState(false)
+
+  const handleSetAlerts = useCallback(async () => {
+    setAlertsLoading(true)
+    try {
+      // Top 5 upstream suppliers by confidence/exposure
+      const topSuppliers = edges
+        .filter(e => e.direction === 'UPSTREAM')
+        .sort((a, b) =>
+          ((b.pct_cogs ?? b.pct_revenue ?? 0) - (a.pct_cogs ?? a.pct_revenue ?? 0)) ||
+          ((b.confidence ?? 0) - (a.confidence ?? 0))
+        )
+        .slice(0, 5)
+
+      await Promise.all(
+        topSuppliers.map(s => api.alerts.create({
+          name:            `${s.entity_name} supply chain`,
+          keywords:        [s.entity_name, s.entity_name.split(' ')[0]].filter((v, i, arr) => arr.indexOf(v) === i),
+          min_volatility:  0.45,
+        }))
+      )
+      setAlertsCreated(true)
+    } catch {
+      // ignore — button just stays in loading state briefly
+    } finally {
+      setAlertsLoading(false)
+    }
+  }, [edges])
   const upstream   = edges.filter(e => e.direction === 'UPSTREAM').length
   const downstream = edges.filter(e => e.direction === 'DOWNSTREAM').length
   const competitor = edges.filter(e => e.direction === 'COMPETITOR').length
@@ -453,6 +482,34 @@ function FocalDrawer({ company, edges, onClose }: {
             ))}
           </div>
         </div>
+
+        {/* Auto-alert button */}
+        {upstream > 0 && (
+          <div className="pt-2 border-t border-terminal-border">
+            <button
+              onClick={handleSetAlerts}
+              disabled={alertsCreated || alertsLoading}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-sm font-mono text-[9px] tracking-widest transition-all disabled:opacity-50"
+              style={{
+                background:   alertsCreated ? '#00c89618' : '#00d4ff12',
+                border:       `0.5px solid ${alertsCreated ? '#00c896' : '#00d4ff'}40`,
+                color:        alertsCreated ? '#00c896'   : '#00d4ff',
+              }}
+            >
+              {alertsLoading ? (
+                <Loader2 size={10} className="animate-spin"/>
+              ) : (
+                <Bell size={10}/>
+              )}
+              {alertsCreated
+                ? `ALERTS SET FOR TOP ${Math.min(upstream, 5)} SUPPLIERS`
+                : `SET SUPPLY CHAIN ALERTS`}
+            </button>
+            <p className="text-[7px] font-mono text-terminal-dim/30 text-center mt-1">
+              Creates alert watches for the top 5 upstream suppliers
+            </p>
+          </div>
+        )}
       </div>
     </motion.div>
   )
