@@ -413,7 +413,9 @@ function SCDisruptions({ ticker, edges }: { ticker: string; edges: SCEdge[] }) {
     fetch(`/api/v1/splc/${ticker}/disruptions`, {
       headers: (() => {
         const t = localStorage.getItem('ws_token')
-        return t ? { Authorization: `Bearer ${t}` } : {}
+        const h: Record<string, string> = {}
+        if (t) h['Authorization'] = `Bearer ${t}`
+        return h
       })(),
     })
       .then(r => r.ok ? r.json() : Promise.reject(r.status))
@@ -491,7 +493,9 @@ function ContagionPanel({ ticker }: { ticker: string }) {
     fetch(`/api/v1/splc/${ticker}/contagion`, {
       headers: (() => {
         const t = localStorage.getItem('ws_token')
-        return t ? { Authorization: `Bearer ${t}` } : {}
+        const h: Record<string, string> = {}
+        if (t) h['Authorization'] = `Bearer ${t}`
+        return h
       })(),
     })
       .then(r => r.ok ? r.json() : Promise.reject(r.status))
