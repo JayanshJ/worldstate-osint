@@ -136,10 +136,10 @@ export function WarRoom() {
               key={mode}
               onClick={() => setViewMode(mode)}
               className={cn(
-                'flex items-center gap-1.5 text-[9px] font-mono tracking-widest px-2.5 py-1 rounded-sm transition-colors',
+                'flex items-center gap-1.5 text-[9px] font-mono tracking-widest px-2.5 py-1 transition-colors border',
                 viewMode === mode
-                  ? 'bg-terminal-accent/15 text-terminal-accent border border-terminal-accent/30'
-                  : 'text-terminal-dim hover:text-terminal-text border border-transparent',
+                  ? 'bg-terminal-accent/15 text-terminal-accent border-terminal-accent/30'
+                  : 'text-terminal-dim hover:text-terminal-text border-transparent',
               )}
             >
               <Icon size={10} />

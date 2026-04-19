@@ -179,32 +179,29 @@ export function StrategyFeed({ onClusterSelect }: Props) {
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="flex-shrink-0 border-b border-terminal-border bg-terminal-surface">
-        <div className="flex items-center justify-between px-4 py-2.5">
-          <div className="flex items-center gap-2">
-            <Zap size={13} className="text-terminal-accent" />
-            <span className="font-mono font-bold text-sm text-terminal-accent tracking-[0.12em]">
-              ALPHA
-            </span>
-            <span className="text-[9px] font-mono text-terminal-dim border border-terminal-border px-1.5 py-0.5 rounded-sm">
-              STRATEGIES
-            </span>
-            {strategies.length > 0 && (
-              <span className="text-[9px] font-mono text-terminal-dim border border-terminal-border px-1.5 py-0.5 rounded-sm">
-                {strategies.length} ACTIVE
-              </span>
-            )}
+        <div className="flex items-end justify-between px-4 py-3">
+          <div>
+            <p className="font-mono text-[9.5px] tracking-[0.18em] uppercase text-terminal-dim mb-0.5">
+              § 03 · Alpha signals
+              {strategies.length > 0 && (
+                <span className="ml-2 text-terminal-accent/70">{strategies.length} ACTIVE</span>
+              )}
+            </p>
+            <h2 className="font-serif text-[20px] leading-none tracking-[-0.01em] text-terminal-text">
+              Strategies, <em className="italic text-terminal-accent">quantified.</em>
+            </h2>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 pb-0.5">
             {lastUpdated && (
               <span className="font-mono text-[9px] text-terminal-dim/60">
-                Updated {lastUpdated.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' })}
+                {lastUpdated.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' })}
               </span>
             )}
             <button
               onClick={handleRefresh}
               disabled={refreshing}
-              className="flex items-center gap-1.5 font-mono text-[9px] text-terminal-dim hover:text-terminal-accent border border-terminal-border hover:border-terminal-accent/40 px-2 py-1 rounded-sm transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 font-mono text-[9px] text-terminal-dim hover:text-terminal-accent border border-terminal-border hover:border-terminal-accent/40 px-2 py-1 transition-colors disabled:opacity-50"
             >
               <RefreshCw size={9} className={refreshing ? 'animate-spin' : ''} />
               REFRESH
@@ -237,7 +234,7 @@ export function StrategyFeed({ onClusterSelect }: Props) {
         {/* Filter tabs */}
         <div className="flex items-center gap-0 px-4 pb-0 overflow-x-auto scrollbar-none">
           {FILTER_TABS.map(tab => {
-            const color  = tab === 'ALL' ? '#00d4ff' : ASSET_CLASS_COLORS[tab as AssetClass]
+            const color  = tab === 'ALL' ? '#d89b4a' : ASSET_CLASS_COLORS[tab as AssetClass]
             const count  = tab === 'ALL' ? strategies.length : strategies.filter(s => s.asset_class === tab).length
             const active = activeFilter === tab
             return (
@@ -255,7 +252,7 @@ export function StrategyFeed({ onClusterSelect }: Props) {
                 {FILTER_LABELS[tab]}
                 {count > 0 && (
                   <span
-                    className="text-[8px] px-1 rounded-sm"
+                    className="text-[8px] px-1"
                     style={active
                       ? { color, background: `${color}20` }
                       : { color: 'inherit', opacity: 0.6 }

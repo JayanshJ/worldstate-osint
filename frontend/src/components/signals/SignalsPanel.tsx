@@ -389,23 +389,25 @@ export function SignalsPanel() {
     <div className="flex flex-col h-full bg-terminal-bg">
 
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-terminal-border flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <span className="text-[10px] font-mono font-bold text-terminal-accent tracking-widest">
-            INVESTMENT SIGNALS
-          </span>
-          <span className="text-[9px] font-mono text-terminal-dim hidden sm:block">
-            Insider filings · Analyst ratings · Earnings · Deals
-          </span>
+      <div className="px-4 py-3 border-b border-terminal-border flex-shrink-0">
+        <div className="flex items-end justify-between gap-2">
+          <div>
+            <p className="font-mono text-[9.5px] tracking-[0.18em] uppercase text-terminal-dim mb-0.5">
+              § 04 · Market signals
+            </p>
+            <h2 className="font-serif text-[20px] leading-none tracking-[-0.01em] text-terminal-text">
+              Signals, <em className="italic text-terminal-accent">actionable.</em>
+            </h2>
+          </div>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex items-center gap-1.5 text-[9px] font-mono text-terminal-dim hover:text-terminal-accent border border-terminal-border hover:border-terminal-accent/40 px-2 py-1 transition-colors disabled:opacity-40 pb-0.5"
+          >
+            <RefreshCw size={10} className={refreshing ? 'animate-spin' : ''} />
+            {refreshing ? 'Fetching…' : 'Refresh'}
+          </button>
         </div>
-        <button
-          onClick={handleRefresh}
-          disabled={refreshing}
-          className="flex items-center gap-1.5 text-[9px] font-mono text-terminal-dim hover:text-terminal-accent transition-colors disabled:opacity-40"
-        >
-          <RefreshCw size={10} className={refreshing ? 'animate-spin' : ''} />
-          {refreshing ? 'Fetching…' : 'Refresh'}
-        </button>
       </div>
 
       {/* Category filters + search */}
@@ -415,16 +417,16 @@ export function SignalsPanel() {
             key={f.value}
             onClick={() => setActiveFilter(f.value)}
             className={cn(
-              'text-[9px] font-mono tracking-wide px-2.5 py-1 rounded-sm transition-colors whitespace-nowrap',
+              'text-[9px] font-mono tracking-wide px-2.5 py-1 transition-colors whitespace-nowrap border',
               activeFilter === f.value
-                ? 'bg-terminal-accent/15 text-terminal-accent border border-terminal-accent/30'
-                : 'text-terminal-dim hover:text-terminal-text border border-transparent',
+                ? 'bg-terminal-accent/15 text-terminal-accent border-terminal-accent/30'
+                : 'text-terminal-dim hover:text-terminal-text border-transparent',
             )}
           >
             {f.label}
           </button>
         ))}
-        <div className="ml-auto flex items-center gap-1.5 border border-terminal-border rounded-sm px-2 py-1 bg-terminal-surface min-w-[130px]">
+        <div className="ml-auto flex items-center gap-1.5 border border-terminal-border px-2 py-1 bg-terminal-surface min-w-[130px]">
           <Search size={9} className="text-terminal-dim flex-shrink-0" />
           <input
             type="text"

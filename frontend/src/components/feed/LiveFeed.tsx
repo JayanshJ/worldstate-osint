@@ -322,58 +322,60 @@ export function LiveFeed() {
     <div className="flex flex-col h-full">
       <MorningBriefing />
 
-      {/* Panel header */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-terminal-border flex-shrink-0">
-        <Radio size={11} className="text-green-400 animate-pulse" />
+      {/* Panel header — § eyebrow + serif headline */}
+      <div className="px-4 py-3 border-b border-terminal-border flex-shrink-0">
+        <div className="flex items-end justify-between gap-2">
+          <div>
+            <p className="font-mono text-[9.5px] tracking-[0.18em] uppercase text-terminal-dim mb-0.5">
+              § Live feed
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setTab('live')}
+                className={cn('font-serif text-[20px] leading-none tracking-[-0.01em] transition-colors',
+                  tab === 'live' ? 'text-terminal-text' : 'text-terminal-dim hover:text-terminal-text')}
+              >
+                {tab === 'live'
+                  ? <>Incoming, <em className="italic text-terminal-accent">raw.</em></>
+                  : 'Live'}
+              </button>
+              <span className="text-terminal-dim/30 font-mono text-[11px]">·</span>
+              <button
+                onClick={() => setTab('digest')}
+                className={cn('font-serif text-[20px] leading-none tracking-[-0.01em] transition-colors',
+                  tab === 'digest' ? 'text-terminal-text' : 'text-terminal-dim hover:text-terminal-text')}
+              >
+                {tab === 'digest'
+                  ? <>Digest, <em className="italic text-terminal-accent">curated.</em></>
+                  : 'Digest'}
+              </button>
+            </div>
+          </div>
 
-        {/* Tabs */}
-        <button
-          onClick={() => setTab('live')}
-          className={cn(
-            'text-[10px] font-mono font-semibold tracking-widest transition-colors',
-            tab === 'live' ? 'text-green-400' : 'text-terminal-dim hover:text-terminal-text',
-          )}
-        >
-          LIVE
-        </button>
-        <span className="text-terminal-dim/40 text-[10px]">|</span>
-        <button
-          onClick={() => setTab('digest')}
-          className={cn(
-            'text-[10px] font-mono font-semibold tracking-widest transition-colors',
-            tab === 'digest' ? 'text-terminal-accent' : 'text-terminal-dim hover:text-terminal-text',
-          )}
-        >
-          DIGEST
-        </button>
-
-        {/* Article count */}
-        {tab === 'live' && (
-          <span className="text-[10px] font-mono bg-terminal-muted px-1.5 py-0.5 rounded text-terminal-dim">
-            {articles.length}
-          </span>
-        )}
-
-        {/* Spacer */}
-        <span className="flex-1" />
-
-        {/* Watchlist toggle */}
-        {tab === 'live' && (
-          <button
-            onClick={() => setWatchlistOpen(v => !v)}
-            className={cn(
-              'flex items-center gap-1 text-[8.5px] font-mono tracking-wider transition-colors px-1.5 py-0.5 rounded-sm',
-              watchlistOpen
-                ? 'text-amber-400 bg-amber-500/10 border border-amber-500/20'
-                : watchedCount > 0
-                ? 'text-amber-400'
-                : 'text-terminal-dim hover:text-terminal-text',
+          <div className="flex items-center gap-2 pb-0.5 flex-shrink-0">
+            {tab === 'live' && (
+              <span className="font-mono text-[9px] text-terminal-dim tracking-[0.1em]">
+                {articles.length} items
+              </span>
             )}
-          >
-            <Star size={9} fill={watchlistOpen || watchedCount > 0 ? 'currentColor' : 'none'} />
-            {watchedCount > 0 && <span>{watchedCount}</span>}
-          </button>
-        )}
+            <span className="w-1.5 h-1.5 rounded-full bg-terminal-accent animate-pulse-dot flex-shrink-0" />
+
+            {tab === 'live' && (
+              <button
+                onClick={() => setWatchlistOpen(v => !v)}
+                className={cn(
+                  'flex items-center gap-1 text-[9px] font-mono tracking-[0.1em] transition-colors px-2 py-1 border',
+                  watchlistOpen || watchedCount > 0
+                    ? 'text-terminal-accent border-terminal-accent/40 bg-terminal-accent/10'
+                    : 'text-terminal-dim border-terminal-border hover:text-terminal-text',
+                )}
+              >
+                <Star size={9} fill={watchlistOpen || watchedCount > 0 ? 'currentColor' : 'none'} />
+                {watchedCount > 0 && <span>{watchedCount}</span>}
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Watchlist panel */}

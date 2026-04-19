@@ -280,22 +280,23 @@ export function getVolatilityTier(v: number): VolatilityTier {
   return 'critical'
 }
 
+// Direction A warm-spectrum volatility palette
 export const VOLATILITY_COLORS: Record<VolatilityTier, string> = {
-  calm:     '#22c55e',
-  low:      '#84cc16',
-  moderate: '#eab308',
-  elevated: '#f97316',
-  high:     '#ef4444',
-  critical: '#dc2626',
+  calm:     '#7bb875',   // muted green
+  low:      '#a8b856',   // yellow-green
+  moderate: '#c9a95a',   // warm amber
+  elevated: '#d88a4a',   // amber-orange
+  high:     '#d6604c',   // warm red-orange
+  critical: '#d64747',   // red
 }
 
 export const VOLATILITY_BG: Record<VolatilityTier, string> = {
-  calm:     'rgba(34,197,94,0.08)',
-  low:      'rgba(132,204,22,0.08)',
-  moderate: 'rgba(234,179,8,0.10)',
-  elevated: 'rgba(249,115,22,0.12)',
-  high:     'rgba(239,68,68,0.14)',
-  critical: 'rgba(220,38,38,0.18)',
+  calm:     'rgba(111,191,106,0.11)',
+  low:      'rgba(184,204,90,0.11)',
+  moderate: 'rgba(212,179,90,0.13)',
+  elevated: 'rgba(224,138,74,0.13)',
+  high:     'rgba(214,96,76,0.15)',
+  critical: 'rgba(214,71,71,0.17)',
 }
 
 export const VOLATILITY_LABELS: Record<VolatilityTier, string> = {

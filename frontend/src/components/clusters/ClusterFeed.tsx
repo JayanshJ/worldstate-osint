@@ -63,40 +63,38 @@ export function ClusterFeed({ onClusterSelect }: Props) {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Panel header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-terminal-border flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <Zap size={12} className="text-terminal-accent" />
-          <span className="text-[11px] font-mono font-semibold text-terminal-accent tracking-widest uppercase">
-            Event Clusters
-          </span>
-          <span className="text-[10px] font-mono bg-terminal-muted px-1.5 py-0.5 rounded text-terminal-dim">
-            {filtered.length}
-          </span>
-          {breakingCount > 0 && (
-            <span className="text-[10px] font-mono bg-red-900/40 text-red-400 border border-red-800/50 px-1.5 py-0.5 rounded animate-blink">
-              {breakingCount} BREAKING
-            </span>
-          )}
-        </div>
-
-        {/* Volatility filter */}
-        <div className="flex items-center gap-0.5">
-          <Filter size={9} className="text-terminal-dim mr-1" />
-          {FILTER_OPTIONS.map(opt => (
-            <button
-              key={opt.value}
-              onClick={() => setMinVolt(opt.value)}
-              className={cn(
-                'text-[9px] font-mono px-1.5 py-0.5 rounded-sm transition-colors',
-                minVolt === opt.value
-                  ? 'bg-terminal-accent/20 text-terminal-accent border border-terminal-accent/40'
-                  : 'text-terminal-dim hover:text-terminal-text border border-transparent',
+      {/* Panel header — § eyebrow + serif headline */}
+      <div className="px-4 py-3 border-b border-terminal-border flex-shrink-0">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <p className="font-mono text-[9.5px] tracking-[0.18em] uppercase text-terminal-dim mb-0.5">
+              § 01 · Active clusters
+              {breakingCount > 0 && (
+                <span className="ml-2 text-[#d64747] animate-blink">{breakingCount} BREAKING</span>
               )}
-            >
-              {opt.label}
-            </button>
-          ))}
+            </p>
+            <h2 className="font-serif text-[20px] leading-none tracking-[-0.01em] text-terminal-text">
+              Stories, <em className="italic text-terminal-accent">clustered.</em>
+            </h2>
+          </div>
+
+          {/* Volatility filter */}
+          <div className="flex items-center gap-0.5 flex-shrink-0 pb-0.5">
+            {FILTER_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => setMinVolt(opt.value)}
+                className={cn(
+                  'text-[9px] font-mono px-2 py-1 tracking-[0.1em] transition-colors border',
+                  minVolt === opt.value
+                    ? 'bg-terminal-accent/15 text-terminal-accent border-terminal-accent/40'
+                    : 'text-terminal-dim hover:text-terminal-text border-terminal-border',
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

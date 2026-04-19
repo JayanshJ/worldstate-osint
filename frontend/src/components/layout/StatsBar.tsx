@@ -36,7 +36,7 @@ export function StatsBar() {
         icon={<Activity size={9} />}
         label="ART/MIN"
         value={articles.per_minute.toFixed(1)}
-        color="#00d4ff"
+        color="#d89b4a"
       />
 
       <div className="h-4 w-px bg-terminal-border flex-shrink-0" />
@@ -106,7 +106,7 @@ function StatChip({
     <div className="flex items-center gap-1 flex-shrink-0">
       {icon && <span className="text-terminal-dim">{icon}</span>}
       <span className="text-[9px] font-mono tracking-wider text-terminal-dim">{label}</span>
-      <span className="text-[10px] font-mono font-semibold" style={{ color: color ?? '#c8d3e8' }}>
+      <span className="text-[10px] font-mono font-semibold" style={{ color: color ?? '#ece6d5' }}>
         {value}
       </span>
     </div>

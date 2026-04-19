@@ -308,9 +308,9 @@ export function WorldMapView({ onClusterSelect }: Props) {
                   const isHovered  = hoveredCountry  === name
 
                   const fill = isSelected
-                    ? '#00d4ff'
+                    ? '#d89b4a'
                     : isHovered
-                    ? '#1e3a5f'
+                    ? '#2a2318'
                     : activity
                     ? activityColor(activity.maxVol, activity.count)
                     : '#111118'
@@ -324,8 +324,8 @@ export function WorldMapView({ onClusterSelect }: Props) {
                       onMouseLeave={() => setHoveredCountry(null)}
                       style={{
                         default:  { fill, stroke: 'rgba(255,255,255,0.10)', strokeWidth: 0.3, outline: 'none' },
-                        hover:    { fill: isSelected ? '#00d4ff' : '#1e3a5f', stroke: '#00d4ff66', strokeWidth: 0.6, outline: 'none', cursor: 'pointer' },
-                        pressed:  { fill: '#00d4ff', outline: 'none' },
+                        hover:    { fill: isSelected ? '#d89b4a' : '#2a2318', stroke: '#d89b4a66', strokeWidth: 0.6, outline: 'none', cursor: 'pointer' },
+                        pressed:  { fill: '#d89b4a', outline: 'none' },
                       }}
                     />
                   )
@@ -385,7 +385,7 @@ export function WorldMapView({ onClusterSelect }: Props) {
               exit={{ opacity: 0 }}
               className="absolute top-4 left-4 pointer-events-none z-10"
             >
-              <div className="bg-terminal-surface border border-cyan-500/30 px-3 py-2 rounded-sm font-mono text-[10px] text-terminal-text flex flex-col gap-1 min-w-[160px]">
+              <div className="bg-terminal-surface border border-terminal-accent/30 px-3 py-2 font-mono text-[10px] text-terminal-text flex flex-col gap-1 min-w-[160px]">
                 <div className="flex items-center gap-1.5">
                   <Plane size={9} style={{ color: AIRCRAFT_COLORS[hoveredAircraft.category] ?? '#00d4ff' }} />
                   <span className="font-bold tracking-wider" style={{ color: AIRCRAFT_COLORS[hoveredAircraft.category] ?? '#00d4ff' }}>
@@ -495,7 +495,7 @@ export function WorldMapView({ onClusterSelect }: Props) {
             <button
               key={i}
               onClick={action}
-              className="w-7 h-7 bg-terminal-surface border border-terminal-border text-terminal-dim hover:text-terminal-accent hover:border-terminal-accent/50 rounded-sm flex items-center justify-center transition-colors"
+              className="w-7 h-7 bg-terminal-surface border border-terminal-border text-terminal-dim hover:text-terminal-accent hover:border-terminal-accent/50 flex items-center justify-center transition-colors"
             >
               <Icon size={11} />
             </button>
@@ -551,45 +551,48 @@ export function WorldMapView({ onClusterSelect }: Props) {
             className="w-[360px] flex-shrink-0 border-l border-terminal-border flex flex-col bg-terminal-bg overflow-hidden"
           >
             {/* Panel header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-terminal-border bg-terminal-surface flex-shrink-0">
-              <div className="flex items-center gap-2 min-w-0">
-                {selectedVessel ? (
-                  <>
-                    <Anchor size={13} className="text-blue-400 flex-shrink-0" />
-                    <span className="font-mono font-bold text-sm text-terminal-text tracking-wide truncate">
-                      {selectedVessel.name}
-                    </span>
-                    <span
-                      className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm border flex-shrink-0"
-                      style={{
-                        color:       selectedVessel.color,
-                        borderColor: `${selectedVessel.color}44`,
-                        background:  `${selectedVessel.color}15`,
-                      }}
-                    >
-                      {selectedVessel.threat}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <Globe size={13} className="text-terminal-accent flex-shrink-0" />
-                    <span className="font-mono font-bold text-sm text-terminal-text tracking-wide">
-                      {selectedCountry}
-                    </span>
-                    {countryActivity.get(selectedCountry!) && (
-                      <span className="text-[9px] font-mono text-terminal-dim border border-terminal-border px-1.5 py-0.5 rounded-sm flex-shrink-0">
-                        {countryActivity.get(selectedCountry!)!.count} CLUSTER{countryActivity.get(selectedCountry!)!.count !== 1 ? 'S' : ''}
+            <div className="px-4 py-3 border-b border-terminal-border bg-terminal-surface flex-shrink-0">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-mono text-[9.5px] tracking-[0.18em] uppercase text-terminal-dim mb-0.5">
+                    {selectedVessel ? '§ Choke point' : '§ Region intel'}
+                  </p>
+                  {selectedVessel ? (
+                    <div className="flex items-center gap-2">
+                      <h2 className="font-serif text-[18px] leading-none tracking-[-0.01em] text-terminal-text truncate">
+                        {selectedVessel.name}
+                      </h2>
+                      <span
+                        className="text-[9px] font-mono px-1.5 py-0.5 border flex-shrink-0"
+                        style={{
+                          color:       selectedVessel.color,
+                          borderColor: `${selectedVessel.color}44`,
+                          background:  `${selectedVessel.color}15`,
+                        }}
+                      >
+                        {selectedVessel.threat}
                       </span>
-                    )}
-                  </>
-                )}
+                    </div>
+                  ) : (
+                    <div className="flex items-baseline gap-2">
+                      <h2 className="font-serif text-[18px] leading-none tracking-[-0.01em] text-terminal-text">
+                        {selectedCountry}
+                      </h2>
+                      {countryActivity.get(selectedCountry!) && (
+                        <span className="text-[9px] font-mono text-terminal-dim border border-terminal-border px-1.5 py-0.5 flex-shrink-0">
+                          {countryActivity.get(selectedCountry!)!.count} CLUSTER{countryActivity.get(selectedCountry!)!.count !== 1 ? 'S' : ''}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={closePanel}
+                  className="text-terminal-dim hover:text-terminal-text transition-colors flex-shrink-0 mt-1"
+                >
+                  <X size={14} />
+                </button>
               </div>
-              <button
-                onClick={closePanel}
-                className="text-terminal-dim hover:text-terminal-text transition-colors flex-shrink-0 ml-2"
-              >
-                <X size={14} />
-              </button>
             </div>
 
             {/* Vessel significance banner */}

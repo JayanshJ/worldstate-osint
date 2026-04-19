@@ -1531,7 +1531,13 @@ export function SupplyChainView({ initialTicker, onTickerChange }: SupplyChainVi
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
         {/* ── Search bar ── */}
-        <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 border-b border-terminal-border bg-terminal-surface/20 flex-shrink-0">
+        <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-terminal-border bg-terminal-surface/20 flex-shrink-0">
+          <div className="w-full flex items-baseline gap-2 mb-1">
+            <p className="font-mono text-[9.5px] tracking-[0.18em] uppercase text-terminal-dim">§ 05 · Supply chain</p>
+            <h2 className="font-serif text-[18px] leading-none tracking-[-0.01em] text-terminal-text">
+              Exposure, <em className="italic text-terminal-accent">mapped.</em>
+            </h2>
+          </div>
 
           {/* Search input + dropdown */}
           <form onSubmit={handleSubmit} className="flex items-center gap-2 flex-1 min-w-0" ref={searchRef}>
@@ -1544,7 +1550,7 @@ export function SupplyChainView({ initialTicker, onTickerChange }: SupplyChainVi
                 onFocus={() => suggestions.length > 0 && setShowDropdown(true)}
                 placeholder="Ticker or company name — e.g. AAPL or Apple"
                 autoComplete="off"
-                className="w-full pl-8 pr-3 py-1.5 bg-terminal-bg border border-terminal-border rounded-sm font-mono text-xs text-terminal-text placeholder:text-terminal-dim/40 focus:outline-none focus:border-terminal-accent/60"
+                className="w-full pl-8 pr-3 py-1.5 bg-terminal-bg border border-terminal-border font-mono text-xs text-terminal-text placeholder:text-terminal-dim/40 focus:outline-none focus:border-terminal-accent/60"
               />
               {/* Autocomplete dropdown */}
               <AnimatePresence>
@@ -1554,7 +1560,7 @@ export function SupplyChainView({ initialTicker, onTickerChange }: SupplyChainVi
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -4 }}
                     transition={{ duration: 0.1 }}
-                    className="absolute top-full left-0 right-0 mt-0.5 bg-terminal-surface border border-terminal-border rounded-sm shadow-lg z-50 overflow-hidden"
+                    className="absolute top-full left-0 right-0 mt-0.5 bg-terminal-surface border border-terminal-border shadow-lg z-50 overflow-hidden"
                   >
                     {suggestions.map(s => (
                       <button
@@ -1576,7 +1582,7 @@ export function SupplyChainView({ initialTicker, onTickerChange }: SupplyChainVi
             <button
               type="submit"
               disabled={busy}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[9px] font-mono tracking-widest bg-terminal-accent/15 text-terminal-accent border border-terminal-accent/30 rounded-sm hover:bg-terminal-accent/25 transition-colors disabled:opacity-50 flex-shrink-0"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[9px] font-mono tracking-widest bg-terminal-accent/15 text-terminal-accent border border-terminal-accent/30 hover:bg-terminal-accent/25 transition-colors disabled:opacity-50 flex-shrink-0"
             >
               {busy
                 ? <Loader2 size={11} className="animate-spin" />
@@ -1598,7 +1604,7 @@ export function SupplyChainView({ initialTicker, onTickerChange }: SupplyChainVi
                   key={id}
                   onClick={() => setTab(id)}
                   className={cn(
-                    'flex items-center gap-1.5 text-[9px] font-mono tracking-widest px-2.5 py-1 rounded-sm transition-colors border',
+                    'flex items-center gap-1.5 text-[9px] font-mono tracking-widest px-2.5 py-1 transition-colors border',
                     tab === id
                       ? 'bg-terminal-accent/15 text-terminal-accent border-terminal-accent/30'
                       : 'text-terminal-dim border-transparent hover:text-terminal-text',

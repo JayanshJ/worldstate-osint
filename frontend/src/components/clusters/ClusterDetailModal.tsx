@@ -59,7 +59,7 @@ export function ClusterDetailModal({ clusterId, onClose }: Props) {
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.96, opacity: 0 }}
         transition={{ duration: 0.18 }}
-        className="w-full max-w-3xl bg-terminal-surface border rounded-sm shadow-2xl flex flex-col"
+        className="w-full max-w-3xl bg-terminal-surface border shadow-2xl flex flex-col"
         style={{
           borderColor: `${color}40`,
           borderLeftWidth: '3px',
@@ -68,35 +68,42 @@ export function ClusterDetailModal({ clusterId, onClose }: Props) {
         }}
       >
         {/* Header */}
-        <div className="flex items-start justify-between px-5 py-4 border-b border-terminal-border flex-shrink-0">
-          <div className="flex-1 min-w-0 pr-4">
-            {loading ? (
-              <div className="h-5 w-64 bg-terminal-muted animate-pulse rounded-sm" />
-            ) : (
-              <h2 className="font-mono text-base font-bold text-terminal-text leading-snug">
-                {cluster?.label ?? 'Cluster Detail'}
-              </h2>
-            )}
-            <div className="flex items-center gap-3 mt-2 flex-wrap">
-              {cluster && (
-                <>
-                  <VolatilityBadge volatility={cluster.volatility} showBar size="md" />
-                  <span className="text-[10px] font-mono text-terminal-dim">
-                    {cluster.member_count} sources · weight {cluster.weighted_score.toFixed(2)}
-                  </span>
-                  <span className="text-[10px] font-mono text-terminal-dim">
-                    First seen {formatAbsTime(cluster.first_seen_at, timezone)}
-                  </span>
-                </>
+        <div className="px-5 py-4 border-b border-terminal-border flex-shrink-0"
+          style={{ borderLeftWidth: '3px', borderLeftColor: color }}
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <p className="font-mono text-[9.5px] tracking-[0.18em] uppercase text-terminal-dim mb-1">
+                § Event cluster
+              </p>
+              {loading ? (
+                <div className="h-7 w-64 bg-terminal-muted animate-pulse" />
+              ) : (
+                <h2 className="font-serif text-[22px] leading-[1.15] tracking-[-0.01em] text-terminal-text">
+                  {cluster?.label ?? 'Cluster Detail'}
+                </h2>
               )}
+              <div className="flex items-center gap-3 mt-2 flex-wrap">
+                {cluster && (
+                  <>
+                    <VolatilityBadge volatility={cluster.volatility} showBar size="md" />
+                    <span className="text-[10px] font-mono text-terminal-dim">
+                      {cluster.member_count} sources · w={cluster.weighted_score.toFixed(2)}
+                    </span>
+                    <span className="text-[10px] font-mono text-terminal-dim">
+                      {formatAbsTime(cluster.first_seen_at, timezone)}
+                    </span>
+                  </>
+                )}
+              </div>
             </div>
+            <button
+              onClick={onClose}
+              className="flex-shrink-0 p-1.5 text-terminal-dim hover:text-terminal-text transition-colors hover:bg-terminal-muted"
+            >
+              <X size={14} />
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="flex-shrink-0 p-1.5 text-terminal-dim hover:text-terminal-text transition-colors rounded-sm hover:bg-terminal-muted"
-          >
-            <X size={14} />
-          </button>
         </div>
 
         {/* Body */}
@@ -104,7 +111,7 @@ export function ClusterDetailModal({ clusterId, onClose }: Props) {
           {loading && (
             <div className="p-5 space-y-3">
               {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="h-8 bg-terminal-muted animate-pulse rounded-sm" />
+                <div key={i} className="h-8 bg-terminal-muted animate-pulse" />
               ))}
             </div>
           )}

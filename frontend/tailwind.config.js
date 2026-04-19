@@ -7,6 +7,7 @@ export default {
       fontFamily: {
         mono:  ['JetBrains Mono', 'Fira Code', 'Consolas', 'monospace'],
         sans:  ['Inter', 'system-ui', 'sans-serif'],
+        serif: ['Instrument Serif', 'Georgia', 'serif'],   // Direction A headlines
       },
       colors: {
         // Terminal palette — theme-aware via CSS variables
@@ -19,20 +20,20 @@ export default {
           dim:     'rgb(var(--t-dim) / <alpha-value>)',
           accent:  'rgb(var(--t-accent) / <alpha-value>)',
         },
-        // Volatility spectrum (calm → breaking)
+        // Volatility spectrum — warm palette matching design
         volt: {
-          calm:     '#22c55e',   // green  0.0–0.25
-          low:      '#84cc16',   // lime   0.25–0.4
-          moderate: '#eab308',   // yellow 0.4–0.55
-          elevated: '#f97316',   // orange 0.55–0.7
-          high:     '#ef4444',   // red    0.7–0.85
-          critical: '#dc2626',   // red-700 0.85–1.0
+          calm:     '#7bb875',   // muted green    0.0–0.25
+          low:      '#a8b856',   // yellow-green   0.25–0.4
+          moderate: '#c9a95a',   // warm amber     0.4–0.55
+          elevated: '#d88a4a',   // amber-orange   0.55–0.7
+          high:     '#d6604c',   // warm red-orange 0.7–0.85
+          critical: '#d64747',   // red             0.85–1.0
         },
         // Sentiment
         sent: {
-          positive: '#10b981',
-          neutral:  '#6b7280',
-          negative: '#f87171',
+          positive: '#6fbf6a',
+          neutral:  '#8a8577',
+          negative: '#d15a4c',
         },
       },
       animation: {
@@ -41,6 +42,7 @@ export default {
         'slide-in':     'slide-in 0.3s ease-out',
         'fade-in':      'fade-in 0.2s ease-out',
         'blink':        'blink 1s step-end infinite',
+        'pulse-dot':    'pulse-dot 1.6s ease-in-out infinite',
       },
       keyframes: {
         ticker: {
@@ -48,8 +50,12 @@ export default {
           '100%': { transform: 'translateX(-50%)' },
         },
         'pulse-glow': {
-          '0%, 100%': { boxShadow: '0 0 0px rgba(0,212,255,0)' },
-          '50%':      { boxShadow: '0 0 12px rgba(0,212,255,0.4)' },
+          '0%, 100%': { boxShadow: '0 0 0px rgba(216,155,74,0)' },
+          '50%':      { boxShadow: '0 0 14px rgba(216,155,74,0.35)' },
+        },
+        'pulse-dot': {
+          '0%, 100%': { boxShadow: '0 0 0 0 rgba(216,155,74,0.5)' },
+          '50%':      { boxShadow: '0 0 0 5px rgba(216,155,74,0)' },
         },
         'slide-in': {
           from: { opacity: '0', transform: 'translateY(-8px)' },
@@ -65,9 +71,13 @@ export default {
         },
       },
       boxShadow: {
-        'card-volt': '0 0 0 1px rgba(0,212,255,0.1), 0 4px 24px rgba(0,0,0,0.4)',
-        'glow-red':  '0 0 20px rgba(239,68,68,0.3)',
-        'glow-cyan': '0 0 20px rgba(0,212,255,0.2)',
+        'card-volt': '0 0 0 1px rgba(216,155,74,0.1), 0 4px 24px rgba(0,0,0,0.4)',
+        'glow-red':  '0 0 20px rgba(214,71,71,0.3)',
+        'glow-amber':'0 0 20px rgba(216,155,74,0.25)',
+      },
+      letterSpacing: {
+        widest2: '0.18em',
+        widest3: '0.22em',
       },
     },
   },

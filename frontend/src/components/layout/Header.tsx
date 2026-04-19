@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Activity, Bell, Globe, LogOut, Moon, Search, Settings, ShieldCheck, Sun, Wifi, WifiOff, AlertTriangle } from 'lucide-react'
+import { Activity, Bell, LogOut, Moon, Search, Settings, ShieldCheck, Sun, Wifi, WifiOff, AlertTriangle } from 'lucide-react'
 import { useWebSocket } from '@/context/WebSocketContext'
 import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
@@ -135,58 +135,61 @@ export function Header({ onSearchOpen, onAlertsOpen, onSettingsOpen, onAdminOpen
 
   return (
     <>
-      <header className="flex-shrink-0 h-12 bg-terminal-surface border-b border-terminal-border flex items-center px-2 md:px-4 gap-2 md:gap-4">
-        {/* Branding */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <Globe size={14} className="text-terminal-accent" />
-          <span className="font-mono font-bold text-sm text-terminal-accent tracking-[0.15em]">
-            WORLD<span className="text-terminal-text">STATE</span>
-          </span>
-          <span className="text-[9px] text-terminal-dim font-mono tracking-widest border border-terminal-muted px-1 py-0.5 rounded">
-            OSINT v1
+      <header className="flex-shrink-0 h-12 bg-terminal-surface border-b border-terminal-border flex items-center px-4 md:px-5 gap-3 md:gap-4">
+
+        {/* ── Brand — Instrument Serif mark ── */}
+        <div className="flex items-center gap-3 flex-shrink-0">
+          <span className="font-serif text-[21px] tracking-[-0.01em] text-terminal-text leading-none">
+            Worldstate<em className="not-italic text-terminal-accent">.</em>
           </span>
         </div>
 
-        <div className="h-6 w-px bg-terminal-border" />
+        {/* ── Live indicator ── */}
+        <div className="hidden sm:flex items-center gap-1.5 flex-shrink-0">
+          <span className="w-1.5 h-1.5 rounded-full bg-terminal-accent animate-pulse-dot flex-shrink-0" />
+          <span className="font-mono text-[9.5px] tracking-[0.18em] uppercase text-terminal-dim">
+            LIVE · {clock}
+          </span>
+        </div>
 
-        {/* Stats + metals — hidden on mobile/tablet */}
+        <div className="h-5 w-px bg-terminal-border hidden md:block flex-shrink-0" />
+
+        {/* ── Metals — hidden on mobile/tablet ── */}
         <div className="hidden lg:flex items-center gap-3 flex-1 overflow-hidden">
-          <StatChip label={timezone === 'UTC' ? 'UTC' : timezone.split('/').pop()!.replace('_', ' ')} value={clock} />
-          <div className="h-4 w-px bg-terminal-border" />
-          <MetalChip label="XAU" price={metals.gold.price}     change={metals.gold.change}     color="#f5c842" onClick={() => openChart('gold',     'XAU', metals.gold.price,     metals.gold.change)} />
+          <MetalChip label="XAU" price={metals.gold.price}     change={metals.gold.change}     color="#d4a843" onClick={() => openChart('gold',     'XAU', metals.gold.price,     metals.gold.change)} />
           <MetalChip label="XAG" price={metals.silver.price}   change={metals.silver.change}   color="#a8b8c8" onClick={() => openChart('silver',   'XAG', metals.silver.price,   metals.silver.change)} />
-          <MetalChip label="XPT" price={metals.platinum.price} change={metals.platinum.change} color="#e2e8f0" onClick={() => openChart('platinum', 'XPT', metals.platinum.price, metals.platinum.change)} />
-          <MetalChip label="WTI" price={metals.wti.price}      change={metals.wti.change}      color="#fb923c" onClick={() => openChart('wti',      'WTI', metals.wti.price,      metals.wti.change)} />
+          <MetalChip label="XPT" price={metals.platinum.price} change={metals.platinum.change} color="#c8d4dc" onClick={() => openChart('platinum', 'XPT', metals.platinum.price, metals.platinum.change)} />
+          <MetalChip label="WTI" price={metals.wti.price}      change={metals.wti.change}      color="#d88a4a" onClick={() => openChart('wti',      'WTI', metals.wti.price,      metals.wti.change)} />
         </div>
-        {/* Spacer on mobile/tablet so actions stay right-aligned */}
         <div className="flex-1 lg:hidden" />
 
-        {/* Action buttons */}
-        <div className="flex items-center gap-2 flex-shrink-0">
+        {/* ── Actions ── */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+
           <button
             onClick={onSearchOpen}
-            className="flex items-center gap-1.5 text-[10px] font-mono px-2.5 py-1.5 text-terminal-dim hover:text-terminal-text border border-terminal-border hover:border-terminal-accent/40 rounded-sm transition-colors group"
+            className="flex items-center gap-1.5 text-[10px] font-mono px-2.5 py-1.5 text-terminal-dim hover:text-terminal-text border border-terminal-border hover:border-terminal-accent/40 transition-colors group"
             title="Search (Ctrl+K)"
           >
-            <Search size={11} className="group-hover:text-terminal-accent transition-colors" />
-            <span className="hidden sm:inline">SEARCH</span>
-            <kbd className="text-[8px] text-terminal-dim/60 border border-terminal-dim/30 px-1 rounded hidden sm:inline">⌘K</kbd>
+            <Search size={10} className="group-hover:text-terminal-accent transition-colors" />
+            <span className="hidden sm:inline tracking-[0.12em]">SEARCH</span>
+            <kbd className="text-[8px] text-terminal-dim/50 border border-terminal-border px-1 hidden sm:inline">⌘K</kbd>
           </button>
 
           <button
             onClick={onAlertsOpen}
             className={cn(
-              'relative flex items-center gap-1.5 text-[10px] font-mono px-2.5 py-1.5 border rounded-sm transition-colors',
+              'relative flex items-center gap-1.5 text-[10px] font-mono px-2.5 py-1.5 border transition-colors tracking-[0.12em]',
               alertCount > 0
-                ? 'text-red-400 border-red-500/40 hover:bg-red-500/10'
+                ? 'text-[#d64747] border-[#d64747]/40 hover:bg-[#d64747]/10'
                 : 'text-terminal-dim hover:text-terminal-text border-terminal-border hover:border-terminal-accent/40',
             )}
             title="Alert Watches"
           >
-            <Bell size={11} className={alertCount > 0 ? 'animate-pulse' : ''} />
+            <Bell size={10} className={alertCount > 0 ? 'animate-pulse' : ''} />
             <span className="hidden sm:inline">ALERTS</span>
             {alertCount > 0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center">
+              <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-[#d64747] text-white text-[7px] font-bold rounded-full flex items-center justify-center">
                 {alertCount > 9 ? '9+' : alertCount}
               </span>
             )}
@@ -194,10 +197,10 @@ export function Header({ onSearchOpen, onAlertsOpen, onSettingsOpen, onAdminOpen
 
           <button
             onClick={toggleTheme}
-            className="flex items-center justify-center w-7 h-7 text-terminal-dim hover:text-terminal-text border border-terminal-border hover:border-terminal-accent/40 rounded-sm transition-colors"
+            className="flex items-center justify-center w-7 h-7 text-terminal-dim hover:text-terminal-text border border-terminal-border hover:border-terminal-accent/40 transition-colors"
             title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
           >
-            {theme === 'dark' ? <Sun size={12} /> : <Moon size={12} />}
+            {theme === 'dark' ? <Sun size={11} /> : <Moon size={11} />}
           </button>
 
           <ConnectionIndicator status={status} />
@@ -206,19 +209,19 @@ export function Header({ onSearchOpen, onAlertsOpen, onSettingsOpen, onAdminOpen
           <div ref={menuRef} className="relative">
             <button
               onClick={() => setMenuOpen(v => !v)}
-              className="flex items-center justify-center w-7 h-7 rounded-sm bg-terminal-accent/20 border border-terminal-accent/40 text-terminal-accent font-mono font-bold text-[11px] hover:bg-terminal-accent/30 transition-colors"
+              className="flex items-center justify-center w-7 h-7 bg-terminal-accent/15 border border-terminal-accent/35 text-terminal-accent font-mono font-bold text-[11px] hover:bg-terminal-accent/25 transition-colors"
               title={user?.email ?? 'Account'}
             >
               {user?.email?.[0]?.toUpperCase() ?? '?'}
             </button>
 
             {menuOpen && (
-              <div className="absolute right-0 top-full mt-1 w-56 bg-gray-950 border border-gray-800 rounded shadow-xl z-50 py-1 font-mono text-xs">
-                <div className="px-3 py-2 border-b border-gray-800">
-                  <p className="text-gray-400 text-[10px] uppercase tracking-widest">Signed in as</p>
-                  <p className="text-white truncate mt-0.5">{user?.email}</p>
+              <div className="absolute right-0 top-full mt-1 w-56 bg-terminal-surface border border-terminal-border shadow-xl z-50 py-1 font-mono text-xs">
+                <div className="px-3 py-2.5 border-b border-terminal-border">
+                  <p className="text-terminal-dim text-[9px] uppercase tracking-[0.18em] mb-1">Signed in as</p>
+                  <p className="text-terminal-text truncate font-sans text-[12px]">{user?.email}</p>
                   {user?.is_admin && (
-                    <span className="inline-flex items-center gap-1 mt-1 text-[9px] text-red-400 border border-red-800 px-1.5 py-0.5 rounded">
+                    <span className="inline-flex items-center gap-1 mt-1.5 text-[9px] text-[#d64747] border border-[#d64747]/40 px-1.5 py-0.5 tracking-[0.1em]">
                       <ShieldCheck size={8} /> ADMIN
                     </span>
                   )}
@@ -226,17 +229,17 @@ export function Header({ onSearchOpen, onAlertsOpen, onSettingsOpen, onAdminOpen
 
                 <button
                   onClick={() => { setMenuOpen(false); onSettingsOpen() }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-gray-300 hover:bg-gray-900 hover:text-white transition-colors"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-terminal-dim hover:bg-terminal-muted/40 hover:text-terminal-text transition-colors text-[11px]"
                 >
-                  <Settings size={12} /> Account Settings
+                  <Settings size={11} /> Account Settings
                 </button>
 
                 {user?.is_admin && (
                   <button
                     onClick={() => { setMenuOpen(false); onAdminOpen() }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-red-400 hover:bg-gray-900 hover:text-red-300 transition-colors"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-[#d64747] hover:bg-terminal-muted/40 transition-colors text-[11px]"
                   >
-                    <ShieldCheck size={12} /> Admin Panel
+                    <ShieldCheck size={11} /> Admin Panel
                   </button>
                 )}
 
@@ -244,9 +247,9 @@ export function Header({ onSearchOpen, onAlertsOpen, onSettingsOpen, onAdminOpen
 
                 <button
                   onClick={() => { setMenuOpen(false); logout() }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-gray-500 hover:bg-gray-900 hover:text-gray-300 transition-colors"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-terminal-dim/60 hover:bg-terminal-muted/40 hover:text-terminal-dim transition-colors text-[11px]"
                 >
-                  <LogOut size={12} /> Sign Out
+                  <LogOut size={11} /> Sign Out
                 </button>
               </div>
             )}

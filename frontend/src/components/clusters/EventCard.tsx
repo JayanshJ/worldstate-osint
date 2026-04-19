@@ -62,106 +62,94 @@ export function EventCard({ cluster, isNew, isUpdated, onSelect }: Props) {
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, y: -10 }}
+      initial={{ opacity: 0, y: -6 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.98 }}
-      transition={{ duration: 0.2 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.18 }}
       onClick={() => onSelect?.(cluster.id)}
       className={cn(
-        'relative rounded-sm border transition-all duration-300 overflow-hidden',
-        'bg-terminal-surface hover:bg-terminal-muted/30',
-        isNew && 'animate-pulse-glow',
+        'relative border transition-all duration-200 overflow-hidden',
+        'bg-terminal-surface hover:bg-terminal-muted/40',
+        isNew && 'shimmer-in',
         onSelect && 'cursor-pointer',
       )}
       style={{
-        borderColor: isNew || isUpdated ? `${color}60` : '#1a1a2e',
+        borderColor: isNew || isUpdated ? `${color}50` : 'rgb(var(--t-border))',
         borderLeftWidth: '3px',
         borderLeftColor: color,
       }}
     >
-      {/* NEW / UPDATED flash banner */}
+      {/* NEW / UPDATED flash tag */}
       {(isNew || isUpdated) && (
         <div
-          className="absolute top-0 right-0 text-[9px] font-mono font-bold px-2 py-0.5 tracking-widest"
-          style={{ backgroundColor: `${color}22`, color }}
+          className="absolute top-0 right-0 text-[8px] font-mono px-2 py-0.5 tracking-[0.15em]"
+          style={{ backgroundColor: `${color}18`, color }}
         >
           {isNew ? '● NEW' : '↑ UPD'}
         </div>
       )}
 
-      {/* Card Header */}
-      <div className="p-3">
+      {/* Card body */}
+      <div className="px-4 pt-3 pb-2.5">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
-            {/* Title */}
-            <h3 className="font-mono text-sm font-semibold text-terminal-text leading-snug truncate">
-              {cluster.label ?? (
-                <span className="text-terminal-dim italic">Analyzing cluster…</span>
-              )}
-            </h3>
 
-            {/* Meta row */}
-            <div className="flex items-center gap-2 mt-1 flex-wrap">
+            {/* Vol badge + meta row */}
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
               <VolatilityBadge volatility={cluster.volatility} size="sm" />
-
-              <span
-                className="text-[10px] font-mono font-semibold"
-                style={{ color: sentColor }}
-              >
-                SENT {fmt(cluster.sentiment)}
-              </span>
-
-              <span className="text-[10px] text-terminal-dim font-mono">
+              <span className="font-mono text-[9.5px] text-terminal-dim tracking-[0.05em]">
                 {cluster.member_count} src · w={cluster.weighted_score.toFixed(1)}
               </span>
-
-              <span className="text-[10px] text-terminal-dim font-mono ml-auto">
+              <span className="font-mono text-[9.5px] text-terminal-dim ml-auto">
                 {formatAbsTime(cluster.last_updated_at, timezone)}
               </span>
             </div>
+
+            {/* Title — Instrument Serif */}
+            <h3 className="font-serif text-[18px] leading-[1.18] tracking-[-0.005em] text-terminal-text mb-2">
+              {cluster.label ?? (
+                <span className="text-terminal-dim italic font-serif">Analyzing cluster…</span>
+              )}
+            </h3>
+
           </div>
 
-          {/* Volatility bar — right side */}
-          <div className="flex flex-col items-end gap-1 flex-shrink-0 w-16">
-            <div className="w-full h-1.5 bg-terminal-muted rounded-full overflow-hidden">
+          {/* Sentiment + vol bar */}
+          <div className="flex flex-col items-end gap-1.5 flex-shrink-0 w-14 pt-0.5">
+            <div className="w-full h-[2px] bg-terminal-muted/60 overflow-hidden">
               <div
-                className="h-full rounded-full transition-all duration-700"
+                className="h-full transition-all duration-700"
                 style={{
                   width: `${Math.round(cluster.volatility * 100)}%`,
                   backgroundColor: color,
-                  boxShadow: cluster.volatility >= 0.4 ? `0 0 8px ${color}60` : 'none',
+                  boxShadow: cluster.volatility >= 0.55 ? `0 0 6px ${color}70` : 'none',
                 }}
               />
             </div>
-            <span
-              className="text-[9px] font-mono font-bold tracking-widest"
-              style={{ color }}
-            >
-              {Math.round(cluster.volatility * 100)}%
+            <span className="font-mono text-[9px] tracking-[0.12em]" style={{ color }}>
+              SENT {fmt(cluster.sentiment)}
             </span>
           </div>
         </div>
 
-        {/* Bullets — always visible if present */}
+        {/* Bullets — design style: dash marker */}
         {hasBullets && (
-          <ul className="mt-2 space-y-1">
+          <ul className="space-y-1.5 mt-1 mb-2">
             {cluster.bullets!.map((bullet, i) => (
-              <li
-                key={i}
-                className="flex items-start gap-2 text-[11px] text-terminal-text font-mono leading-relaxed"
-              >
-                <span className="flex-shrink-0 mt-0.5" style={{ color }}>
-                  {i === 0 ? '►' : '·'}
-                </span>
-                <span>{bullet}</span>
+              <li key={i} className="relative pl-4 text-[12px] text-terminal-dim leading-[1.5]">
+                <span
+                  className="absolute left-0 top-[9px] w-[8px] h-[1px]"
+                  style={{ backgroundColor: color }}
+                />
+                {bullet}
               </li>
             ))}
           </ul>
         )}
 
-        {/* Entities */}
+        {/* Entity pills */}
         {cluster.entities && (
-          <div className="mt-2">
+          <div className="mt-1.5">
             <EntityPills entities={cluster.entities} max={2} />
           </div>
         )}

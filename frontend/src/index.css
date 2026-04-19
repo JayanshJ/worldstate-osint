@@ -2,28 +2,28 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ─── CSS Variables — Dark (default) ───────────────────────────────────── */
+/* ─── CSS Variables — Dark · Direction A "The Signal" ───────────────────── */
 :root {
   color-scheme: dark;
-  --t-bg:      10 10 15;
-  --t-surface: 15 15 26;
-  --t-border:  26 26 46;
-  --t-muted:   42 42 62;
-  --t-text:    200 211 232;
-  --t-dim:     90 99 128;
-  --t-accent:  0 212 255;
+  --t-bg:      14 13 11;      /* #0e0d0b  warm near-black        */
+  --t-surface: 20 18 16;      /* #141210  warm surface           */
+  --t-border:  38 35 31;      /* #26231f  warm dividing line     */
+  --t-muted:   47 43 37;      /* #2f2b25  hover / skeleton bg    */
+  --t-text:    236 230 213;   /* #ece6d5  warm cream             */
+  --t-dim:     138 133 119;   /* #8a8577  muted labels           */
+  --t-accent:  216 155 74;    /* #d89b4a  amber                  */
 }
 
 /* ─── CSS Variables — Light ─────────────────────────────────────────────── */
 html.light {
   color-scheme: light;
-  --t-bg:      248 247 244;
+  --t-bg:      247 244 237;   /* #f7f4ed  warm parchment         */
   --t-surface: 255 255 255;
-  --t-border:  216 221 230;
-  --t-muted:   238 241 246;
-  --t-text:    26 32 53;
-  --t-dim:     107 114 128;
-  --t-accent:  0 145 194;
+  --t-border:  229 221 204;   /* #e5ddcc  warm rule              */
+  --t-muted:   210 201 181;   /* #d2c9b5  warm hover bg          */
+  --t-text:    26 23 18;      /* #1a1712  warm ink               */
+  --t-dim:     107 101 83;    /* #6b6553  warm dim label         */
+  --t-accent:  216 155 74;    /* #d89b4a  same amber             */
 }
 
 html, body, #root {
@@ -61,22 +61,13 @@ body {
   overflow: hidden;
 }
 
-/* ─── Scanline overlay (dark mode only) ─────────────────────────────────── */
-body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 2px,
-    rgba(0, 0, 0, 0.03) 2px,
-    rgba(0, 0, 0, 0.03) 4px
-  );
-  pointer-events: none;
-  z-index: 9999;
+/* ─── Shimmer-in: new / updated item flash (Direction A) ────────────────── */
+@keyframes shimmerIn {
+  0%   { background-color: rgba(216,155,74,0.12); transform: translateY(-3px); opacity: 0; }
+  40%  { background-color: rgba(216,155,74,0.10); opacity: 1; }
+  100% { background-color: transparent;           transform: translateY(0); }
 }
-html.light body::after { display: none; }
+.shimmer-in { animation: shimmerIn 1.2s ease-out; }
 
 /* ─── Selection ─────────────────────────────────────────────────────────── */
 ::selection {

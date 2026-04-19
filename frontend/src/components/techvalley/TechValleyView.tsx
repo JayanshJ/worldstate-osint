@@ -576,41 +576,59 @@ export function TechValleyView({ onClusterSelect }: Props) {
       {/* AI Summary */}
       {svClusters.length > 0 && <SVAISummary clusters={svClusters} />}
 
-      {/* Tab bar */}
-      <div className="flex items-center gap-1 px-3 py-2 border-b border-terminal-border bg-terminal-surface/30 flex-shrink-0">
-        <div className="flex-1 flex items-center gap-1">
+      {/* Panel header + tab bar */}
+      <div className="border-b border-terminal-border flex-shrink-0">
+        <div className="px-4 py-3 flex items-end justify-between">
+          <div>
+            <p className="font-mono text-[9.5px] tracking-[0.18em] uppercase text-terminal-dim mb-0.5">
+              § 06 · Silicon valley
+              {svClusters.length > 0 && (
+                <span className="ml-2 text-terminal-accent/70">{svClusters.length} CLUSTERS</span>
+              )}
+            </p>
+            <h2 className="font-serif text-[20px] leading-none tracking-[-0.01em] text-terminal-text">
+              Tech, <em className="italic text-terminal-accent">live.</em>
+            </h2>
+          </div>
+          <div className="flex items-center gap-2 pb-0.5">
+            <span className="font-mono text-[9px] text-terminal-dim/40">
+              {techArticles.length} articles
+            </span>
+            <span className="w-1.5 h-1.5 rounded-full bg-terminal-accent animate-pulse-dot flex-shrink-0" />
+            <button
+              onClick={() => load(true)}
+              disabled={refreshing}
+              className="flex items-center gap-1 text-[9px] font-mono text-terminal-dim hover:text-terminal-accent border border-terminal-border hover:border-terminal-accent/40 px-2 py-1 transition-colors"
+            >
+              <RefreshCw size={9} className={refreshing ? 'animate-spin' : ''} />
+              REFRESH
+            </button>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-0.5 px-3 pb-0 overflow-x-auto scrollbar-none">
           {TABS.map(({ id, label, icon: Icon, count }) => (
             <button
               key={id}
               onClick={() => setActiveTab(id)}
               className={cn(
-                'flex items-center gap-1.5 text-[9px] font-mono tracking-widest px-2.5 py-1 rounded-sm transition-colors',
+                'flex items-center gap-1.5 text-[9px] font-mono tracking-widest px-2.5 py-1.5 transition-colors border-b-2 whitespace-nowrap',
                 activeTab === id
-                  ? 'bg-terminal-accent/15 text-terminal-accent border border-terminal-accent/30'
-                  : 'text-terminal-dim hover:text-terminal-text border border-transparent',
+                  ? 'text-terminal-accent border-b-terminal-accent'
+                  : 'text-terminal-dim hover:text-terminal-text border-b-transparent',
               )}
+              style={activeTab === id ? { borderBottomColor: '#d89b4a' } : {}}
             >
               <Icon size={9} />
               {label}
-              <span className={cn(
-                'text-[8px] font-mono',
-                activeTab === id ? 'text-terminal-accent' : 'text-terminal-dim/40'
-              )}>({count})</span>
+              {count > 0 && (
+                <span className={cn(
+                  'text-[8px] font-mono',
+                  activeTab === id ? 'text-terminal-accent/70' : 'text-terminal-dim/40'
+                )}>{count}</span>
+              )}
             </button>
           ))}
-        </div>
-
-        <button
-          onClick={() => load(true)}
-          disabled={refreshing}
-          className="flex items-center gap-1 text-[8px] font-mono text-terminal-dim/50 hover:text-terminal-dim transition-colors px-2"
-        >
-          <RefreshCw size={9} className={refreshing ? 'animate-spin' : ''} />
-          REFRESH
-        </button>
-
-        <div className="text-[8px] font-mono text-terminal-dim/30">
-          {svClusters.length} SV clusters · {techArticles.length} tech articles
         </div>
       </div>
 
