@@ -1,0 +1,298 @@
+/* ─── Design token scope — isolates from terminal palette ─── */
+.root {
+  --bg:     #0e0d0b;
+  --fg:     #e9e4d7;
+  --dim:    #8a8577;
+  --line:   #24221e;
+  --accent: #d89b4a;
+  --green-b:#9fd88a;
+
+  box-sizing: border-box;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: 'Inter', sans-serif;
+  height: 100%;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  -webkit-font-smoothing: antialiased;
+}
+
+.root *, .root *::before, .root *::after {
+  box-sizing: border-box;
+}
+
+/* ─── Header ─── */
+.header {
+  padding: 18px 28px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-shrink: 0;
+}
+
+.mark {
+  font-family: 'Instrument Serif', serif;
+  font-size: 28px;
+  letter-spacing: -0.01em;
+  font-weight: 400;
+}
+
+.markEm {
+  font-style: italic;
+  color: var(--accent);
+}
+
+.sub {
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--dim);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #d64747;
+  margin-right: 8px;
+  animation: pulse 1.4s infinite;
+  flex-shrink: 0;
+}
+
+@keyframes pulse {
+  50% { opacity: 0.3; }
+}
+
+/* ─── Main ─── */
+.main {
+  padding: 48px 28px;
+  overflow: auto;
+}
+
+.h1 {
+  font-family: 'Instrument Serif', serif;
+  font-weight: 400;
+  font-size: clamp(48px, 7vw, 96px);
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+  margin: 0 0 12px;
+  max-width: 14ch;
+}
+
+.h1Em {
+  color: var(--accent);
+  font-style: italic;
+}
+
+.lede {
+  max-width: 62ch;
+  color: var(--dim);
+  font-size: 17px;
+  line-height: 1.55;
+  margin-bottom: 56px;
+  margin-top: 0;
+}
+
+/* ─── Card grid ─── */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+  max-width: 1280px;
+}
+
+/* ─── Card (Direction A) ─── */
+.card {
+  border: 1px solid var(--line);
+  background: #121110;
+  padding: 24px;
+  text-decoration: none;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  transition: border-color 0.2s, background 0.2s;
+  position: relative;
+  overflow: hidden;
+  min-height: 360px;
+  cursor: pointer;
+}
+
+.card:hover {
+  border-color: var(--accent);
+  background: #161412;
+}
+
+.eyebrow {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--dim);
+  display: flex;
+  justify-content: space-between;
+}
+
+.cardTitle {
+  font-family: 'Instrument Serif', serif;
+  font-weight: 400;
+  font-size: 40px;
+  line-height: 1;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.cardTitleEm {
+  color: var(--accent);
+  font-style: italic;
+}
+
+.cardBody {
+  margin: 0;
+  color: var(--dim);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.links {
+  display: flex;
+  gap: 14px;
+  margin-top: auto;
+  flex-wrap: wrap;
+}
+
+.chip {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  border: 1px solid var(--line);
+  padding: 6px 10px;
+  text-decoration: none;
+  color: var(--fg);
+  letter-spacing: 0.1em;
+  transition: border-color 0.15s, color 0.15s;
+  cursor: pointer;
+}
+
+.card:hover .chip {
+  border-color: rgba(216, 155, 74, 0.4);
+}
+
+.chip:hover {
+  border-color: var(--accent) !important;
+  color: var(--accent);
+}
+
+/* Decorative ghost letter */
+.preview {
+  position: absolute;
+  right: -40px;
+  bottom: -40px;
+  font-family: 'Instrument Serif', serif;
+  font-size: 240px;
+  line-height: 0.8;
+  color: rgba(216, 155, 74, 0.06);
+  pointer-events: none;
+  font-style: italic;
+  user-select: none;
+}
+
+/* ─── Card B overrides (Direction B — Terminal) ─── */
+.cardB {
+  /* inherits .card, overrides on hover */
+}
+
+.cardB:hover {
+  border-color: var(--green-b);
+  background: #131411;
+}
+
+.eyebrowB {
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.cardTitleB {
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 500;
+  font-size: 34px;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+  margin: 0;
+  line-height: 1;
+}
+
+.cardTitleEmB {
+  font-style: normal;
+  color: var(--green-b);
+}
+
+.chipB {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  border: 1px solid var(--line);
+  padding: 6px 10px;
+  text-decoration: none;
+  color: var(--fg);
+  letter-spacing: 0.1em;
+  transition: border-color 0.15s, color 0.15s;
+  cursor: pointer;
+}
+
+.cardB:hover .chipB {
+  border-color: rgba(159, 216, 138, 0.35);
+}
+
+.chipB:hover {
+  border-color: var(--green-b) !important;
+  color: var(--green-b);
+}
+
+.bPreview {
+  position: absolute;
+  right: -40px;
+  bottom: -40px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 180px;
+  line-height: 0.8;
+  color: rgba(200, 255, 180, 0.04);
+  pointer-events: none;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  user-select: none;
+}
+
+/* ─── Footer ─── */
+.footer {
+  padding: 16px 28px;
+  border-top: 1px solid var(--line);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--dim);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  display: flex;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+/* ─── Responsive ─── */
+@media (max-width: 768px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+  .h1 {
+    font-size: clamp(36px, 10vw, 72px);
+  }
+  .main {
+    padding: 32px 20px;
+  }
+  .header {
+    padding: 14px 20px;
+  }
+}

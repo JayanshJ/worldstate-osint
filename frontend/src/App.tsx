@@ -8,6 +8,7 @@ import { LoginPage } from '@/components/auth/LoginPage'
 import { RegisterPage } from '@/components/auth/RegisterPage'
 import { PrivacyPolicy } from '@/components/legal/PrivacyPolicy'
 import { TermsOfService } from '@/components/legal/TermsOfService'
+import { DesignHub } from '@/components/landing/DesignHub'
 
 function AuthGate() {
   const { token } = useAuth()
@@ -15,10 +16,12 @@ function AuthGate() {
   if (!token) {
     return (
       <Switch>
+        <Route path="/"          component={DesignHub} />
+        <Route path="/login"     component={LoginPage} />
         <Route path="/register"  component={RegisterPage} />
         <Route path="/privacy"   component={PrivacyPolicy} />
         <Route path="/terms"     component={TermsOfService} />
-        <Route component={LoginPage} />
+        <Route component={DesignHub} />
       </Switch>
     )
   }
