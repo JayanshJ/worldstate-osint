@@ -56,8 +56,14 @@ jobs:
             FRONTEND="${{ steps.changes.outputs.frontend }}"
 
             if [ "$BACKEND" = "true" ] && [ "$FRONTEND" = "true" ]; then
-              echo "==> Rebuilding backend + frontend"
-              docker compose build api frontend
+              echo "==> Rebuilding backend + frontend (sequentially)"
+              # Build one image at a time. Building both together lets BuildKit
+              # run them in parallel, and the combined peak memory of the Python
+              # api build + the Node/vite frontend build OOM-kills the small
+              # Hetzner box (manifests as the SSH session dying mid-build with
+              # "wait: remote command exited without exit status or exit signal").
+              docker compose build api
+              docker compose build frontend
               docker compose up -d api frontend
             elif [ "$BACKEND" = "true" ]; then
               echo "==> Rebuilding backend only"
