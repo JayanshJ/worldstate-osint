@@ -24,7 +24,7 @@ import { useWebSocket } from '@/context/WebSocketContext'
 // ─── SV intelligence filter engine ──────────────────────────────────────────
 
 // Minimum volatility to appear in SV events feed (filters out pure noise)
-const MIN_SV_VOLATILITY = 0.22
+const MIN_SV_VOLATILITY = 0.10
 
 // Strong AI/LLM signals — highest weight
 const AI_KEYWORDS = [
@@ -130,15 +130,20 @@ function svScore(cluster: EventCluster): number {
   const orgs      = cluster.entities?.organizations ?? []
   const locs      = cluster.entities?.locations ?? []
   const label     = (cluster.label ?? '').toLowerCase()
+  const bullets   = (cluster.bullets ?? []).join(' ').toLowerCase()
   const orgsLower = orgs.map(o => o.toLowerCase())
+  const orgsText  = orgsLower.join(' ')
+  const allText   = label + ' ' + bullets + ' ' + orgsText
 
   let score = 0
 
-  // AI/LLM keywords in label → highest value
+  // AI/LLM keywords anywhere (label weighted highest) → highest value
   if (AI_KEYWORDS.some(kw => label.includes(kw))) score += 4
+  else if (AI_KEYWORDS.some(kw => bullets.includes(kw) || orgsText.includes(kw))) score += 2
 
-  // Strong tech keyword in label
+  // Strong tech keyword anywhere
   if (STRONG_TECH_KEYWORDS.some(kw => label.includes(kw))) score += 2
+  else if (STRONG_TECH_KEYWORDS.some(kw => bullets.includes(kw) || orgsText.includes(kw))) score += 1
 
   // Major SV company in organizations (confirmed entity extraction)
   let majCount = 0
@@ -307,25 +312,34 @@ function isSVCluster(cluster: EventCluster): boolean {
   if (cluster.volatility < MIN_SV_VOLATILITY) return false
 
   const label = (cluster.label ?? '').toLowerCase()
+  const bullets = (cluster.bullets ?? []).join(' ').toLowerCase()
+  const orgsLower = (cluster.entities?.organizations ?? []).map(o => o.toLowerCase())
+  const orgsText = orgsLower.join(' ')
+  const allText = label + ' ' + bullets + ' ' + orgsText
 
   // Hard-exclude obvious noise regardless of any other signals
-  if (NOISE_LABEL_TERMS.some(n => label.includes(n))) return false
+  if (NOISE_LABEL_TERMS.some(n => allText.includes(n))) return false
 
-  // Label must have at least one tech signal (AI, strong tech, or major company + org confirm)
-  const hasAI         = AI_KEYWORDS.some(kw => label.includes(kw))
-  const hasStrongTech = STRONG_TECH_KEYWORDS.some(kw => label.includes(kw))
-  const orgsLower     = (cluster.entities?.organizations ?? []).map(o => o.toLowerCase())
+  // Check tech signals across label, bullets, AND organizations (not just label)
+  const hasAI         = AI_KEYWORDS.some(kw => allText.includes(kw))
+  const hasStrongTech = STRONG_TECH_KEYWORDS.some(kw => allText.includes(kw))
   const hasMajorConfirmed = SV_COMPANIES_MAJOR.some(co =>
-    label.includes(co.trim()) && orgsLower.some(o => o.includes(co.trim()))
+    orgsLower.some(o => o.includes(co.trim()))
   )
   const hasSecConfirmed = SV_COMPANIES_SEC.some(co =>
-    label.includes(co.trim()) && orgsLower.some(o => o.includes(co.trim()))
+    orgsLower.some(o => o.includes(co.trim()))
+  )
+  const hasMajorInLabel = SV_COMPANIES_MAJOR.some(co =>
+    label.includes(co.trim())
+  )
+  const hasSecInLabel = SV_COMPANIES_SEC.some(co =>
+    label.includes(co.trim())
   )
 
-  if (!hasAI && !hasStrongTech && !hasMajorConfirmed && !hasSecConfirmed) return false
+  if (!hasAI && !hasStrongTech && !hasMajorConfirmed && !hasSecConfirmed && !hasMajorInLabel && !hasSecInLabel) return false
 
   // Require minimum composite SV relevance score
-  return svScore(cluster) >= 5
+  return svScore(cluster) >= 3
 }
 
 function isFundingCluster(cluster: EventCluster): boolean {
