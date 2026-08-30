@@ -89,15 +89,11 @@ export function WarRoom() {
     setDetailClusterId(id)
     setSearchOpen(false)
     setAlertsOpen(false)
-    navigate(`/cluster/${id}`)
-  }, [navigate])
+  }, [])
 
   const closeCluster = useCallback(() => {
     setDetailClusterId(null)
-    // Go back to the view they came from (or dashboard)
-    const prev = pathToView(location)
-    navigate(prev === 'dashboard' ? '/' : VIEW_PATHS[prev])
-  }, [location, navigate])
+  }, [])
 
   // Current SPLC ticker from URL (e.g. /splc/AAPL)
   const splcTicker = splcParams?.ticker?.toUpperCase() ?? undefined
