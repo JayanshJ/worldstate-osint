@@ -48,6 +48,20 @@ const STRONG_TECH_KEYWORDS = [
   'crypto exchange', 'defi protocol', 'blockchain network',
   'antitrust suit', 'ftc v ', 'doj v ', 'tech regulation',
   'layoffs ', 'laid off', 'workforce reduction', 'headcount',
+  // Extended tech signals
+  'saas ', 'platform as a service', 'infrastructure as a service',
+  'open source', 'open-source', 'github ', 'copilot',
+  'devops', 'kubernetes', 'docker ', 'terraform',
+  'react ', 'typescript', 'rust lang', 'golang',
+  'api ', 'sdk ', 'developer tool', 'programming language',
+  'supercomputer', 'compute cluster', 'gpu cluster',
+  'training run', 'model training', 'fine-tuning', 'rlhf',
+  'robotaxi', 'robotics', 'humanoid robot', 'bipedal',
+  'space launch', 'rocket', 'starship', 'falcon ',
+  'ev market', 'electric vehicle', 'battery tech', 'solid-state battery',
+  'biotech', 'gene editing', 'crispr',
+  'augmented reality', 'virtual reality', 'vision pro', 'quest ',
+  'saas valuation', 'ai startup', 'ai chip', 'ai model',
 ]
 
 // Company-as-keyword — only valid if the company also appears in organizations list
@@ -61,11 +75,32 @@ const SV_COMPANIES_SEC = [
   'palantir', 'rivian', 'lyft', 'uber ', 'airbnb', 'doordash', 'coinbase',
   'snowflake', 'cloudflare', 'crowdstrike', 'okta', 'twilio', 'zoom ',
   'samsung', 'tsmc', 'arm ', 'asml', 'amd',
+  // Extended: more SV / tech companies
+  'sap ', 'servicenow', 'workday', 'adobe', 'figma', 'notion', 'canva',
+  'discord', 'reddit ', 'spotify ', 'shopify', 'square ', 'block ',
+  'robinhood', 'kraken', 'gemini ', 'circle ', 'consensys', 'parity',
+  'snyk', 'wiz ', 'sentinelone', 'zscaler', 'mimecast', 'fastly',
+  'unity ', 'roblox', 'epic games', 'valve', 'take-two',
+  'waymo', 'cruise ', 'zoox', 'aurora ', 'mobileye',
+  'figure ', '1x ', 'sanctuary ai', 'agility robotics',
+  'tenstorrent', 'cerebras', 'sambaanova', 'groq ', 'reka',
+  'scale ai', 'weights & biases', 'hugging face', 'together ai',
+  'eleuther', 'cohere ', 'ai21', 'character.ai', 'inflection',
+  'deepseek', 'zhipu', 'minimax', 'moonshot', 'baichuan',
 ]
 const SV_PEOPLE = [
   'sam altman', 'elon musk', 'mark zuckerberg', 'sundar pichai',
   'satya nadella', 'jensen huang', 'tim cook', 'jeff bezos',
   'andy jassy', 'dario amodei', 'demis hassabis',
+  // Extended: more SV leaders
+  'lisa su', 'pat gelsinger', 'craig federighi', 'greg joswiak',
+  'brian chesky', 'reed hastings', 'brian armstrong',
+  'patrick collison', 'john collison', 'michelle zatlyn',
+  'david sacks', 'balaji srinivasan', 'vinod khosla',
+  'peter thiel', 'reid hoffman', 'marc andreessen', 'ben horowitz',
+  'mira murati', 'greg brockman', 'ilya sutskever',
+  'emad mostaque', 'arthur Mensch', 'guillaume lample',
+  'jensen', 'zuckerberg', 'nadella', 'pichai',
 ]
 const SV_LOCATIONS = [
   'san francisco', 'silicon valley', 'bay area', 'san jose', 'cupertino',
@@ -142,22 +177,31 @@ const FUNDING_KEYWORDS = [
   'unicorn', 'acquisition', 'acquires', 'merger', 'SPAC', 'venture', 'round',
 ]
 
-// Expanded tech/SV-focused sources
+// Expanded tech/SV-focused sources — must match source IDs in backend sources.py
 const TECH_SOURCE_IDS = new Set([
-  // Pure tech publications
-  'techcrunch', 'wired', 'ars_technica', 'the_verge', 'engadget',
-  'mit_technology_review', 'venturebeat', 'bloomberg_tech', 'bloomberg_technology',
-  'zdnet', 'cnet', 'techradar', 'pcmag', 'ieee_spectrum', 'acm_technews',
+  // Core tech publications
+  'techcrunch', 'theverge', 'arstechnica', 'wired', 'hackernews',
+  'mit_tech', 'venturebeat', 'zdnet', 'infoq',
+  // Extended SV / tech publications
+  'engadget', 'gizmodo', 'fast_company', 'inc_magazine', 'the_information',
+  'platformer', 'stratechery_blog', 'stratechery', 'dkb_report', 'six_colors',
+  'macrumors', '9to5mac', '9to5google', 'android_authority', 'xda_developers',
+  // AI / ML focused
+  'the_decoder', 'import_ai', 'synced_review', 'ai_news', 'unite_ai',
+  // Semiconductor / hardware
+  'tomshardware', 'anandtech', 'semiconductor_eng', 'ee_times',
+  // Dev / engineering / open source
+  'dev_class', 'theregister', 'sdtimes', 'jaxenter',
   // Startup / VC / deals
-  'hacker_news', 'crunchbase_news', 'pitchbook', 'sifted', 'tech_eu',
-  // AI-focused
-  'ai_news', 'the_decoder', 'import_ai', 'synced_review', 'ai_business',
-  // Consumer tech
-  '9to5mac', 'macrumors', 'android_authority', '9to5google', 'xda_developers',
-  // Business/tech crossover
-  'business_insider_tech', 'fortune_tech', 'fast_company', 'inc_magazine',
-  'axios_pro', 'the_information', 'semafor_tech', 'protocol', 'morningbrew_tech',
-  'stratechery', 'platformer', 'dkb_report',
+  'crunchbase_news', 'tech_eu', 'sifted', 'pitchbook', 'axios_pro',
+  'axios', 'semafor',
+  // China tech / Asia tech
+  'techinasia', 'pandaily', 'shenwan',
+  // Finance/tech crossover (already ingested, but tech-relevant)
+  'bloomberg_tech', 'reuters_tech', 'cnbc_tech',
+  'fortune', 'business_insider',
+  // SEC filings (tech company disclosures)
+  'sec_8k', 'sec_13d',
 ])
 
 // ─── Stock price strip ───────────────────────────────────────────────────────

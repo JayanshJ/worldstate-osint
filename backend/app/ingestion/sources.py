@@ -161,7 +161,7 @@ RSS_SOURCES: list[Source] = [
     Source("imf_news",        "IMF News",                SourceType.RSS, 0.92, "https://www.imf.org/en/News/rss?language=eng"),
     Source("wsj_economy",     "WSJ Economy",             SourceType.RSS, 0.90, "https://feeds.a.dj.com/rss/RSSEconomy.xml"),
 
-    # Technology
+    # Technology — Core publications
     Source("techcrunch",      "TechCrunch",              SourceType.RSS, 0.82, "https://techcrunch.com/feed/"),
     Source("theverge",        "The Verge",               SourceType.RSS, 0.81, "https://www.theverge.com/rss/index.xml"),
     Source("arstechnica",     "Ars Technica",            SourceType.RSS, 0.83, "https://feeds.arstechnica.com/arstechnica/index"),
@@ -171,6 +171,53 @@ RSS_SOURCES: list[Source] = [
     Source("venturebeat",     "VentureBeat",             SourceType.RSS, 0.76, "https://venturebeat.com/feed/"),
     Source("zdnet",           "ZDNet",                   SourceType.RSS, 0.75, "https://www.zdnet.com/news/rss.xml"),
     Source("infoq",           "InfoQ",                   SourceType.RSS, 0.74, "https://feed.infoq.com/"),
+
+    # Technology — Extended SV / Tech publications
+    Source("engadget",        "Engadget",                SourceType.RSS, 0.78, "https://www.engadget.com/rss.xml"),
+    Source("gizmodo",         "Gizmodo",                 SourceType.RSS, 0.72, "https://gizmodo.com/rss"),
+    Source("fast_company",    "Fast Company",            SourceType.RSS, 0.78, "https://www.fastcompany.com/rss"),
+    Source("inc_magazine",    "Inc. Magazine",           SourceType.RSS, 0.76, "https://www.inc.com/rss"),
+    Source("the_information",  "The Information",         SourceType.RSS, 0.85, "https://www.theinformation.com/feed"),
+    Source("platformer",      "Platformer (Casey Newton)",SourceType.RSS, 0.80, "https://www.platformer.news/feed"),
+    Source("stratechery_blog","Stratechery Blog",        SourceType.RSS, 0.82, "https://stratechery.com/feed/"),
+    Source("dkb_report",      "DKB Report",               SourceType.RSS, 0.74, "https://dkb.io/feed"),
+    Source("six_colors",      "Six Colors",               SourceType.RSS, 0.72, "https://sixcolors.com/feed/"),
+    Source("macrumors",       "MacRumors",               SourceType.RSS, 0.68, "https://www.macrumors.com/macrumors.xml"),
+    Source("9to5mac",         "9to5Mac",                  SourceType.RSS, 0.70, "https://9to5mac.com/feed/"),
+    Source("9to5google",      "9to5Google",               SourceType.RSS, 0.70, "https://9to5google.com/feed/"),
+    Source("android_authority","Android Authority",       SourceType.RSS, 0.68, "https://www.androidauthority.com/feed/"),
+    Source("xda_developers",  "XDA Developers",           SourceType.RSS, 0.66, "https://www.xda-developers.com/feed/"),
+
+    # Technology — AI / ML focused
+    Source("the_decoder",     "The Decoder (AI)",         SourceType.RSS, 0.74, "https://the-decoder.com/feed/"),
+    Source("import_ai",      "Import AI",                SourceType.RSS, 0.76, "https://importai.substack.com/feed"),
+    Source("synced_review",  "Synced Review (AI)",       SourceType.RSS, 0.72, "https://syncedreview.com/feed/"),
+    Source("ai_news",        "AI News",                  SourceType.RSS, 0.68, "https://artificialintelligence-news.com/feed/"),
+    Source("unite_ai",       "Unite.ai",                 SourceType.RSS, 0.70, "https://unite.ai/feed/"),
+
+    # Technology — Semiconductor / Hardware
+    Source("tomshardware",    "Tom's Hardware",           SourceType.RSS, 0.74, "https://www.tomshardware.com/feeds/all"),
+    Source("anandtech",       "AnandTech",                SourceType.RSS, 0.78, "https://www.anandtech.com/rss/"),
+    Source("semiconductor_eng","SemiEngineering",         SourceType.RSS, 0.80, "https://semiengineering.com/feed/"),
+    Source("ee_times",       "EE Times",                 SourceType.RSS, 0.78, "https://www.eetimes.com/feed/"),
+
+    # Technology — Dev / Engineering / Open Source
+    Source("dev_class",      "DevClass",                  SourceType.RSS, 0.72, "https://devclass.com/feed/"),
+    Source("theregister",    "The Register",              SourceType.RSS, 0.78, "https://www.theregister.com/headlines.atom"),
+    Source("sdtimes",        "SD Times",                 SourceType.RSS, 0.72, "https://sdtimes.com/feed/"),
+    Source("jaxenter",       "JAXenter",                  SourceType.RSS, 0.70, "https://jaxenter.com/feed"),
+
+    # Technology — Startup / VC / Deals
+    Source("crunchbase_news", "Crunchbase News",          SourceType.RSS, 0.78, "https://news.crunchbase.com/feed/"),
+    Source("tech_eu",        "TechEU",                   SourceType.RSS, 0.74, "https://tech.eu/feed/"),
+    Source("sifted",         "Sifted",                   SourceType.RSS, 0.76, "https://sifted.eu/feed/"),
+    Source("pitchbook",      "Pitchbook News",           SourceType.RSS, 0.80, "https://pitchbook.com/news/rss"),
+    Source("axios_pro",      "Axios Pro (Tech)",         SourceType.RSS, 0.78, "https://api.axios.com/feed/?tag=technology"),
+
+    # Technology — China Tech / Asia Tech
+    Source("techinasia",     "Tech in Asia",              SourceType.RSS, 0.76, "https://www.techinasia.com/feed"),
+    Source("pandaily",       "Pandaily",                 SourceType.RSS, 0.70, "https://pandaily.com/feed/"),
+    Source("shenwan",        "ShenWan (China Tech)",      SourceType.RSS, 0.68, "https://en.shenwan.com/feed/"),
 
     # Crypto / Web3
     Source("coindesk",        "CoinDesk",                SourceType.RSS, 0.78, "https://www.coindesk.com/arc/outboundfeeds/rss/"),
