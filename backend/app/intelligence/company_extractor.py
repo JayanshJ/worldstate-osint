@@ -312,8 +312,9 @@ async def get_company_profile(ticker: str, redis_client=None, cik: str | None = 
         "website":           profile_raw.get("weburl", ""),
         "exchange":          profile_raw.get("exchange", ""),
         "country":           profile_raw.get("country", ""),
-        "market_cap":        profile_raw.get("marketCapitalization"),
-        "share_outstanding": profile_raw.get("shareOutstanding"),
+        # Finnhub returns marketCap in millions of USD and shares in millions
+        "market_cap":        profile_raw.get("marketCapitalization") * 1e6 if profile_raw.get("marketCapitalization") else None,
+        "share_outstanding": profile_raw.get("shareOutstanding") * 1e6 if profile_raw.get("shareOutstanding") else None,
         "ipo":               profile_raw.get("ipo", ""),
         "logo":              profile_raw.get("logo", ""),
         "peers":             peers_raw,
@@ -327,13 +328,14 @@ async def get_company_profile(ticker: str, redis_client=None, cik: str | None = 
         "day_open":          quote_raw.get("o"),
         "prev_close":        quote_raw.get("pc"),
         # ── Key metrics (from Finnhub /stock/metric) ──
+        # Finnhub returns margin/ROE/dividend as percentages (e.g. 62.97 = 62.97%)
         "pe_ratio":          metric_raw.get("peNormalizedAnnual"),
         "forward_pe":        metric_raw.get("peExclExtraTTM"),
         "dividend_yield":    metric_raw.get("dividendYieldIndicated"),
         "beta":              metric_raw.get("beta"),
         "fifty_two_week_high": metric_raw.get("52WeekHigh"),
         "fifty_two_week_low":  metric_raw.get("52WeekLow"),
-        "avg_volume":        metric_raw.get("10DayAverageTradingVolume"),
+        "avg_volume":        metric_raw.get("10DayAverageTradingVolume") * 1e6 if metric_raw.get("10DayAverageTradingVolume") else None,
         "employees":         metric_raw.get("numberOfEmployees"),
         "revenue_ttm":       metric_raw.get("revenuePerShareTTM"),
         "profit_margin":     metric_raw.get("netProfitMarginTTM"),

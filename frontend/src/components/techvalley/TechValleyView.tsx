@@ -538,10 +538,10 @@ function CompanyDetailContent({ profile }: { profile: CompanyProfile }) {
         <Metric label="MKT CAP" value={fmtMarketCap(profile.market_cap)} />
         <Metric label="P/E" value={profile.pe_ratio != null ? profile.pe_ratio.toFixed(1) : '—'} />
         <Metric label="BETA" value={profile.beta != null ? profile.beta.toFixed(2) : '—'} />
-        <Metric label="DIV YIELD" value={profile.dividend_yield != null ? `${(profile.dividend_yield * 100).toFixed(2)}%` : '—'} />
+        <Metric label="DIV YIELD" value={profile.dividend_yield != null ? `${profile.dividend_yield.toFixed(2)}%` : '—'} />
         <Metric label="REV/SH" value={profile.revenue_ttm != null ? `$${profile.revenue_ttm.toFixed(2)}` : '—'} />
-        <Metric label="MARGIN" value={profile.profit_margin != null ? `${(profile.profit_margin * 100).toFixed(1)}%` : '—'} />
-        <Metric label="ROE" value={profile.roe != null ? `${(profile.roe * 100).toFixed(1)}%` : '—'} />
+        <Metric label="MARGIN" value={profile.profit_margin != null ? `${profile.profit_margin.toFixed(1)}%` : '—'} />
+        <Metric label="ROE" value={profile.roe != null ? `${profile.roe.toFixed(1)}%` : '—'} />
         <Metric label="D/E" value={profile.debt_to_equity != null ? profile.debt_to_equity.toFixed(2) : '—'} />
       </div>
 
