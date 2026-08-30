@@ -123,7 +123,9 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8080:80"
+      # Bind to all interfaces for Tailscale-only access (100.85.93.60:8090).
+      # Not reachable from the public internet — Tailscale network only.
+      - "0.0.0.0:8090:80"
     depends_on:
       api:
         condition: service_healthy
