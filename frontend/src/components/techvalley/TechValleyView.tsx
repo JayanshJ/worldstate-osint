@@ -1,18 +1,25 @@
 /**
- * TechValleyView — Silicon Valley Intelligence Dashboard
+ * TechValleyView — Silicon Valley Intelligence Dashboard (v2)
  *
- * Panels:
- *   1. Stock strip     — live price + % change for Mag-7 + key SV names
- *   2. SV Event Feed   — active clusters mentioning SV companies, filtered live
- *   3. Funding Radar   — clusters tagged with funding/IPO/M&A keywords
- *   4. Live Articles   — tech-source article feed (TechCrunch, Wired, Ars, etc.)
+ * Layout:
+ *   1. Company card strip   — clickable trading cards with live price + change
+ *   2. AI Briefing button     — click-to-generate modal (no auto-gen)
+ *   3. Left column (60%)      — Events / Deals tabs (cluster feed)
+ *   4. Right column (40%)     — Live tech article feed (always visible)
+ *
+ * Clicking a company card opens a detail modal with full profile,
+ * analyst ratings, key metrics, and related news.
  */
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useLocation } from 'wouter'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Cpu, DollarSign, Newspaper, RefreshCw, ExternalLink, Sparkles, X } from 'lucide-react'
+import {
+  Cpu, DollarSign, Newspaper, RefreshCw, ExternalLink,
+  Sparkles, X, TrendingUp, TrendingDown, Building2,
+} from 'lucide-react'
 import { api } from '@/lib/api'
+import type { CompanyProfile } from '@/lib/api'
 import type { EventCluster, RawArticle } from '@/types'
 import { getVolatilityTier, VOLATILITY_COLORS } from '@/types'
 import { VolatilityBadge } from '@/components/ui/VolatilityBadge'
@@ -23,10 +30,8 @@ import { useWebSocket } from '@/context/WebSocketContext'
 
 // ─── SV intelligence filter engine ──────────────────────────────────────────
 
-// Minimum volatility to appear in SV events feed (filters out pure noise)
 const MIN_SV_VOLATILITY = 0.10
 
-// Strong AI/LLM signals — highest weight
 const AI_KEYWORDS = [
   'artificial intelligence', ' ai ', ' ai,', ' ai.', 'ai-', '-ai ',
   'large language model', 'llm', 'gpt-', 'chatgpt', 'gemini', 'claude',
@@ -35,7 +40,6 @@ const AI_KEYWORDS = [
   'inference ', 'fine-tun', 'training run', 'model weight',
 ]
 
-// Strong tech fundamentals — clearly tech stories
 const STRONG_TECH_KEYWORDS = [
   'semiconductor', ' chip ', ' chips ', 'chipmaker', 'microchip', 'silicon wafer',
   'data center', 'hyperscaler', 'cloud computing', 'edge computing',
@@ -48,7 +52,6 @@ const STRONG_TECH_KEYWORDS = [
   'crypto exchange', 'defi protocol', 'blockchain network',
   'antitrust suit', 'ftc v ', 'doj v ', 'tech regulation',
   'layoffs ', 'laid off', 'workforce reduction', 'headcount',
-  // Extended tech signals
   'saas ', 'platform as a service', 'infrastructure as a service',
   'open source', 'open-source', 'github ', 'copilot',
   'devops', 'kubernetes', 'docker ', 'terraform',
@@ -64,7 +67,6 @@ const STRONG_TECH_KEYWORDS = [
   'saas valuation', 'ai startup', 'ai chip', 'ai model',
 ]
 
-// Company-as-keyword — only valid if the company also appears in organizations list
 const SV_COMPANIES_MAJOR = [
   'apple', 'google', 'alphabet', 'microsoft', 'nvidia', 'meta ', 'amazon',
   'openai', 'anthropic', 'tesla', 'spacex',
@@ -75,7 +77,6 @@ const SV_COMPANIES_SEC = [
   'palantir', 'rivian', 'lyft', 'uber ', 'airbnb', 'doordash', 'coinbase',
   'snowflake', 'cloudflare', 'crowdstrike', 'okta', 'twilio', 'zoom ',
   'samsung', 'tsmc', 'arm ', 'asml', 'amd',
-  // Extended: more SV / tech companies
   'sap ', 'servicenow', 'workday', 'adobe', 'figma', 'notion', 'canva',
   'discord', 'reddit ', 'spotify ', 'shopify', 'square ', 'block ',
   'robinhood', 'kraken', 'gemini ', 'circle ', 'consensys', 'parity',
@@ -92,7 +93,6 @@ const SV_PEOPLE = [
   'sam altman', 'elon musk', 'mark zuckerberg', 'sundar pichai',
   'satya nadella', 'jensen huang', 'tim cook', 'jeff bezos',
   'andy jassy', 'dario amodei', 'demis hassabis',
-  // Extended: more SV leaders
   'lisa su', 'pat gelsinger', 'craig federighi', 'greg joswiak',
   'brian chesky', 'reed hastings', 'brian armstrong',
   'patrick collison', 'john collison', 'michelle zatlyn',
@@ -107,7 +107,6 @@ const SV_LOCATIONS = [
   'menlo park', 'palo alto', 'mountain view', 'sunnyvale', 'seattle tech',
 ]
 
-// Hard-exclude these — no amount of tech keywords saves them
 const NOISE_LABEL_TERMS = [
   'hollywood', 'box office', 'film studio', 'screenwriter',
   'delta air', 'united airlines', 'american airlines', 'southwest air',
@@ -117,15 +116,15 @@ const NOISE_LABEL_TERMS = [
   ' nba ', ' nfl ', ' mlb ', ' fifa ', 'olympic games',
   'hurricane ', 'earthquake ', 'wildfire disaster',
   'drug cartel', 'fentanyl', 'opioid crisis',
-  'space solar power', // Chinese military orbital solar
+  'space solar power',
   'profit sharing, hollywood',
 ]
 
-// All SV signals flattened (for article matching)
 const SV_ALL = [...SV_COMPANIES_MAJOR, ...SV_COMPANIES_SEC, ...SV_PEOPLE]
 const TECH_ALL_KEYWORDS = [...AI_KEYWORDS, ...STRONG_TECH_KEYWORDS]
 
 // ── Scoring engine ────────────────────────────────────────────────────────────
+
 function svScore(cluster: EventCluster): number {
   const orgs      = cluster.entities?.organizations ?? []
   const locs      = cluster.entities?.locations ?? []
@@ -137,15 +136,12 @@ function svScore(cluster: EventCluster): number {
 
   let score = 0
 
-  // AI/LLM keywords anywhere (label weighted highest) → highest value
   if (AI_KEYWORDS.some(kw => label.includes(kw))) score += 4
   else if (AI_KEYWORDS.some(kw => bullets.includes(kw) || orgsText.includes(kw))) score += 2
 
-  // Strong tech keyword anywhere
   if (STRONG_TECH_KEYWORDS.some(kw => label.includes(kw))) score += 2
   else if (STRONG_TECH_KEYWORDS.some(kw => bullets.includes(kw) || orgsText.includes(kw))) score += 1
 
-  // Major SV company in organizations (confirmed entity extraction)
   let majCount = 0
   for (const co of SV_COMPANIES_MAJOR) {
     if (orgsLower.some(o => o.includes(co.trim()))) {
@@ -153,7 +149,6 @@ function svScore(cluster: EventCluster): number {
     }
   }
 
-  // Secondary SV company in organizations
   let secCount = 0
   for (const co of SV_COMPANIES_SEC) {
     if (orgsLower.some(o => o.includes(co.trim()))) {
@@ -161,13 +156,10 @@ function svScore(cluster: EventCluster): number {
     }
   }
 
-  // SV person in organizations
   if (SV_PEOPLE.some(p => orgsLower.some(o => o.includes(p)))) score += 3
 
-  // SV location confirmed
   if (locs.some(l => SV_LOCATIONS.some(sv => l.toLowerCase().includes(sv)))) score += 2
 
-  // Bonus: company name appears in BOTH label AND organizations (high confidence)
   for (const co of SV_COMPANIES_MAJOR) {
     if (label.includes(co.trim()) && orgsLower.some(o => o.includes(co.trim()))) {
       score += 2; break
@@ -178,38 +170,103 @@ function svScore(cluster: EventCluster): number {
 }
 
 const FUNDING_KEYWORDS = [
-  'raises', 'funding', 'Series A', 'Series B', 'Series C', 'IPO', 'valuation',
-  'unicorn', 'acquisition', 'acquires', 'merger', 'SPAC', 'venture', 'round',
+  'raises', 'funding', 'series a', 'series b', 'series c', 'ipo', 'valuation',
+  'unicorn', 'acquisition', 'acquires', 'merger', 'spac', 'venture', 'round',
+  'seed round', 'raises $', 'ipo filing', 'buyout', 'takeover', 'private equity',
+  'funding round', 'capital raise', 'term sheet',
 ]
 
 // Expanded tech/SV-focused sources — must match source IDs in backend sources.py
 const TECH_SOURCE_IDS = new Set([
-  // Core tech publications
   'techcrunch', 'theverge', 'arstechnica', 'wired', 'hackernews',
   'mit_tech', 'venturebeat', 'zdnet', 'infoq',
-  // Extended SV / tech publications
   'engadget', 'gizmodo', 'fast_company', 'inc_magazine', 'the_information',
   'platformer', 'stratechery_blog', 'stratechery', 'dkb_report', 'six_colors',
   'macrumors', '9to5mac', '9to5google', 'android_authority', 'xda_developers',
-  // AI / ML focused
   'the_decoder', 'import_ai', 'synced_review', 'ai_news', 'unite_ai',
-  // Semiconductor / hardware
   'tomshardware', 'anandtech', 'semiconductor_eng', 'ee_times',
-  // Dev / engineering / open source
   'dev_class', 'theregister', 'sdtimes', 'jaxenter',
-  // Startup / VC / deals
   'crunchbase_news', 'tech_eu', 'sifted', 'pitchbook', 'axios_pro',
   'axios', 'semafor',
-  // China tech / Asia tech
   'techinasia', 'pandaily', 'shenwan',
-  // Finance/tech crossover (already ingested, but tech-relevant)
   'bloomberg_tech', 'reuters_tech', 'cnbc_tech',
   'fortune', 'business_insider',
-  // SEC filings (tech company disclosures)
   'sec_8k', 'sec_13d',
 ])
 
-// ─── Stock price strip ───────────────────────────────────────────────────────
+// ─── Filter functions ─────────────────────────────────────────────────────────
+
+function isSVCluster(cluster: EventCluster): boolean {
+  if (cluster.volatility < MIN_SV_VOLATILITY) return false
+
+  const label = (cluster.label ?? '').toLowerCase()
+  const bullets = (cluster.bullets ?? []).join(' ').toLowerCase()
+  const orgsLower = (cluster.entities?.organizations ?? []).map(o => o.toLowerCase())
+  const orgsText = orgsLower.join(' ')
+  const allText = label + ' ' + bullets + ' ' + orgsText
+
+  if (NOISE_LABEL_TERMS.some(n => allText.includes(n))) return false
+
+  const hasAI         = AI_KEYWORDS.some(kw => allText.includes(kw))
+  const hasStrongTech = STRONG_TECH_KEYWORDS.some(kw => allText.includes(kw))
+  const hasMajorConfirmed = SV_COMPANIES_MAJOR.some(co => orgsLower.some(o => o.includes(co.trim())))
+  const hasSecConfirmed = SV_COMPANIES_SEC.some(co => orgsLower.some(o => o.includes(co.trim())))
+  const hasMajorInLabel = SV_COMPANIES_MAJOR.some(co => label.includes(co.trim()))
+  const hasSecInLabel = SV_COMPANIES_SEC.some(co => label.includes(co.trim()))
+
+  if (!hasAI && !hasStrongTech && !hasMajorConfirmed && !hasSecConfirmed && !hasMajorInLabel && !hasSecInLabel) return false
+
+  return svScore(cluster) >= 3
+}
+
+function isFundingCluster(cluster: EventCluster): boolean {
+  // Don't require isSVCluster first — funding clusters are inherently business/tech
+  if (cluster.volatility < MIN_SV_VOLATILITY) return false
+
+  const label = (cluster.label ?? '').toLowerCase()
+  const bullets = (cluster.bullets ?? []).join(' ').toLowerCase()
+  const orgsLower = (cluster.entities?.organizations ?? []).map(o => o.toLowerCase())
+  const allText = label + ' ' + bullets + ' ' + orgsLower.join(' ')
+
+  if (NOISE_LABEL_TERMS.some(n => allText.includes(n))) return false
+
+  // Must have funding keyword
+  const hasFunding = FUNDING_KEYWORDS.some(kw => allText.includes(kw))
+  if (!hasFunding) return false
+
+  // Must also have some tech/SV relevance
+  const hasTechSignal =
+    AI_KEYWORDS.some(kw => allText.includes(kw)) ||
+    STRONG_TECH_KEYWORDS.some(kw => allText.includes(kw)) ||
+    SV_COMPANIES_MAJOR.some(co => allText.includes(co.trim())) ||
+    SV_COMPANIES_SEC.some(co => allText.includes(co.trim()))
+
+  return hasTechSignal
+}
+
+const ARTICLE_NOISE_TERMS = [
+  'drone strike', 'missile attack', 'military offensive',
+  'hurricane ', 'earthquake ', 'wildfire', 'tsunami',
+  ' nba ', ' nfl ', ' mlb ', 'world cup ', 'olympic',
+  'drug cartel', 'fentanyl', 'opioid',
+  'box office ', 'film awards', 'oscars',
+]
+
+function isTechArticle(article: RawArticle): boolean {
+  if (!article.title) return false
+  const src   = article.source_id ?? ''
+  const title = article.title.toLowerCase()
+
+  if (ARTICLE_NOISE_TERMS.some(n => title.includes(n))) return false
+
+  const hasTechKw  = TECH_ALL_KEYWORDS.some(kw => title.includes(kw))
+  const hasSVEntity = SV_ALL.some(sv => title.includes(sv.trim()))
+
+  if (TECH_SOURCE_IDS.has(src)) return hasTechKw || hasSVEntity
+  return hasTechKw && hasSVEntity
+}
+
+// ─── Company card strip ───────────────────────────────────────────────────────
 
 const STRIP_TICKERS = [
   { ticker: 'AAPL',  name: 'Apple'     },
@@ -227,34 +284,43 @@ const STRIP_TICKERS = [
 ]
 
 interface StockQuote {
-  ticker:     string
-  name:       string
-  price:      number | null
-  market_cap: number | null
-  rec:        string   // analyst recommendation
+  ticker:      string
+  name:        string
+  price:       number | null
+  change_pct:  number | null
+  market_cap:  number | null
+  rec:         string
 }
 
-function fmtPrice(v: number | null) {
+function fmtPrice(v: number | null): string {
   if (v == null) return '—'
   return `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
+function fmtMarketCap(v: number | null): string {
+  if (v == null) return '—'
+  if (v >= 1e12) return `$${(v / 1e12).toFixed(2)}T`
+  if (v >= 1e9)  return `$${(v / 1e9).toFixed(1)}B`
+  if (v >= 1e6)  return `$${(v / 1e6).toFixed(0)}M`
+  return `$${v.toFixed(0)}`
+}
 
-function StockStrip({ onTickerClick }: { onTickerClick: (ticker: string) => void }) {
+function StockStrip({ onCardClick }: { onCardClick: (ticker: string) => void }) {
   const [quotes, setQuotes] = useState<StockQuote[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
-    const fetch = async () => {
+    const fetchQuotes = async () => {
       const results = await Promise.allSettled(
         STRIP_TICKERS.map(t =>
           api.company.get(t.ticker).then(p => ({
-            ticker:     t.ticker,
-            name:       t.name,
-            price:      p.current_price,
-            market_cap: p.market_cap,
-            rec:        p.analysts.recommendation ?? '',
+            ticker:      t.ticker,
+            name:        t.name,
+            price:       p.current_price,
+            change_pct:  p.change_pct,
+            market_cap:  p.market_cap,
+            rec:         p.analysts?.recommendation ?? '',
           }))
         )
       )
@@ -265,8 +331,8 @@ function StockStrip({ onTickerClick }: { onTickerClick: (ticker: string) => void
       setQuotes(q)
       setLoading(false)
     }
-    fetch()
-    const interval = setInterval(fetch, 60_000)
+    fetchQuotes()
+    const interval = setInterval(fetchQuotes, 120_000)
     return () => { cancelled = true; clearInterval(interval) }
   }, [])
 
@@ -274,7 +340,7 @@ function StockStrip({ onTickerClick }: { onTickerClick: (ticker: string) => void
     return (
       <div className="flex gap-2 overflow-x-auto scrollbar-none py-2 px-4 border-b border-terminal-border">
         {STRIP_TICKERS.map(t => (
-          <div key={t.ticker} className="flex-shrink-0 w-24 h-10 bg-terminal-surface/40 rounded-sm animate-pulse" />
+          <div key={t.ticker} className="flex-shrink-0 w-28 h-16 bg-terminal-surface/40 rounded-sm animate-pulse" />
         ))}
       </div>
     )
@@ -284,20 +350,34 @@ function StockStrip({ onTickerClick }: { onTickerClick: (ticker: string) => void
     <div className="flex gap-2 overflow-x-auto scrollbar-none py-2 px-4 border-b border-terminal-border bg-terminal-surface/20">
       {STRIP_TICKERS.map(t => {
         const q = quotes.find(q => q.ticker === t.ticker)
+        const change = q?.change_pct
+        const isUp = change != null && change > 0
+        const isDown = change != null && change < 0
+        const color = isUp ? '#22c55e' : isDown ? '#ef4444' : '#6b7280'
         const rec = (q?.rec ?? '').toLowerCase()
-        const color = rec.includes('buy') ? '#22c55e' : rec.includes('sell') ? '#ef4444' : '#00d4ff'
+        const recColor = rec.includes('buy') ? '#22c55e' : rec.includes('sell') ? '#ef4444' : '#00d4ff'
+
         return (
           <button
             key={t.ticker}
-            onClick={() => onTickerClick(t.ticker)}
-            className="flex-shrink-0 px-3 py-1.5 rounded-sm border transition-all hover:brightness-125"
-            style={{ background: color + '10', borderColor: color + '25' }}
+            onClick={() => onCardClick(t.ticker)}
+            className="flex-shrink-0 w-28 px-3 py-2 rounded-sm border transition-all hover:brightness-125 text-left"
+            style={{ background: color + '08', borderColor: color + '25' }}
           >
-            <div className="flex items-center gap-1.5">
-              <span className="font-mono text-[10px] font-bold" style={{ color }}>{t.ticker}</span>
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-[10px] font-bold" style={{ color: recColor }}>{t.ticker}</span>
+              {change != null && (
+                <span className="flex items-center gap-0.5 text-[8px] font-mono font-bold" style={{ color }}>
+                  {isUp ? <TrendingUp size={8} /> : isDown ? <TrendingDown size={8} /> : null}
+                  {change > 0 ? '+' : ''}{change.toFixed(1)}%
+                </span>
+              )}
             </div>
-            <div className="font-mono text-[9px] text-terminal-dim mt-0.5">
+            <div className="font-mono text-[11px] text-terminal-text mt-0.5">
               {fmtPrice(q?.price ?? null)}
+            </div>
+            <div className="font-mono text-[8px] text-terminal-dim/50 mt-0.5">
+              {fmtMarketCap(q?.market_cap ?? null)}
             </div>
           </button>
         )
@@ -306,87 +386,379 @@ function StockStrip({ onTickerClick }: { onTickerClick: (ticker: string) => void
   )
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Company detail modal ─────────────────────────────────────────────────────
 
-function isSVCluster(cluster: EventCluster): boolean {
-  if (cluster.volatility < MIN_SV_VOLATILITY) return false
+function CompanyDetailModal({ ticker, onClose }: { ticker: string; onClose: () => void }) {
+  const [profile, setProfile] = useState<CompanyProfile | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
 
-  const label = (cluster.label ?? '').toLowerCase()
-  const bullets = (cluster.bullets ?? []).join(' ').toLowerCase()
-  const orgsLower = (cluster.entities?.organizations ?? []).map(o => o.toLowerCase())
-  const orgsText = orgsLower.join(' ')
-  const allText = label + ' ' + bullets + ' ' + orgsText
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError(false)
+    api.company.get(ticker)
+      .then(p => { if (!cancelled) { setProfile(p); setLoading(false) } })
+      .catch(() => { if (!cancelled) { setError(true); setLoading(false) } })
+    return () => { cancelled = true }
+  }, [ticker])
 
-  // Hard-exclude obvious noise regardless of any other signals
-  if (NOISE_LABEL_TERMS.some(n => allText.includes(n))) return false
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.15 }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
+        transition={{ duration: 0.15 }}
+        className="relative w-full max-w-3xl max-h-[85vh] mx-4 bg-terminal-bg border border-terminal-border rounded-sm shadow-2xl flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-terminal-border flex-shrink-0">
+          <Building2 size={16} className="text-terminal-accent flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <span className="font-mono text-[12px] font-bold text-terminal-text">
+              {profile?.name ?? ticker}
+            </span>
+            {profile && (
+              <span className="font-mono text-[9px] text-terminal-dim/50 ml-2">
+                {ticker} · {profile.exchange || '—'}
+              </span>
+            )}
+          </div>
+          <button onClick={onClose} className="text-terminal-dim hover:text-terminal-text transition-colors flex-shrink-0">
+            <X size={16} />
+          </button>
+        </div>
 
-  // Check tech signals across label, bullets, AND organizations (not just label)
-  const hasAI         = AI_KEYWORDS.some(kw => allText.includes(kw))
-  const hasStrongTech = STRONG_TECH_KEYWORDS.some(kw => allText.includes(kw))
-  const hasMajorConfirmed = SV_COMPANIES_MAJOR.some(co =>
-    orgsLower.some(o => o.includes(co.trim()))
+        {/* Body */}
+        <div className="overflow-y-auto scrollbar-thin px-5 py-4 flex-1">
+          {loading && (
+            <div className="space-y-3">
+              <div className="h-8 bg-terminal-surface rounded animate-pulse w-1/2" />
+              <div className="grid grid-cols-4 gap-3">
+                {[1,2,3,4].map(i => <div key={i} className="h-16 bg-terminal-surface rounded animate-pulse" />)}
+              </div>
+              <div className="h-32 bg-terminal-surface rounded animate-pulse" />
+            </div>
+          )}
+
+          {error && (
+            <p className="text-[11px] font-mono text-terminal-dim/40 italic">
+              Failed to load company profile. The API may be rate-limited.
+            </p>
+          )}
+
+          {profile && !loading && (
+            <CompanyDetailContent profile={profile} />
+          )}
+        </div>
+      </motion.div>
+    </motion.div>
   )
-  const hasSecConfirmed = SV_COMPANIES_SEC.some(co =>
-    orgsLower.some(o => o.includes(co.trim()))
-  )
-  const hasMajorInLabel = SV_COMPANIES_MAJOR.some(co =>
-    label.includes(co.trim())
-  )
-  const hasSecInLabel = SV_COMPANIES_SEC.some(co =>
-    label.includes(co.trim())
-  )
-
-  if (!hasAI && !hasStrongTech && !hasMajorConfirmed && !hasSecConfirmed && !hasMajorInLabel && !hasSecInLabel) return false
-
-  // Require minimum composite SV relevance score
-  return svScore(cluster) >= 3
 }
 
-function isFundingCluster(cluster: EventCluster): boolean {
-  if (!isSVCluster(cluster)) return false
-  const label   = (cluster.label ?? '').toLowerCase()
-  const bullets = (cluster.bullets ?? []).join(' ').toLowerCase()
-  return FUNDING_KEYWORDS.some(kw => label.includes(kw.toLowerCase()) || bullets.includes(kw.toLowerCase()))
+function CompanyDetailContent({ profile }: { profile: CompanyProfile }) {
+  const change = profile.change
+  const changePct = profile.change_pct
+  const isUp = changePct != null && changePct > 0
+  const isDown = changePct != null && changePct < 0
+  const priceColor = isUp ? '#22c55e' : isDown ? '#ef4444' : '#6b7280'
+
+  const a = profile.analysts
+  const recColor = (a?.recommendation ?? '').includes('BUY') ? '#22c55e'
+    : (a?.recommendation ?? '').includes('SELL') ? '#ef4444' : '#eab308'
+
+  const pt = a?.price_target
+  const ptUpside = pt?.mean && profile.current_price
+    ? ((pt.mean - profile.current_price) / profile.current_price * 100) : null
+
+  // 52-week range bar
+  const range52Low = profile.fifty_two_week_low
+  const range52High = profile.fifty_two_week_high
+  const pricePctInRange = range52Low && range52High && profile.current_price
+    ? ((profile.current_price - range52Low) / (range52High - range52Low) * 100) : null
+
+  return (
+    <div className="space-y-5">
+      {/* Price section */}
+      <div className="flex items-end gap-4">
+        <div>
+          <div className="font-mono text-[28px] font-bold text-terminal-text leading-none">
+            {fmtPrice(profile.current_price)}
+          </div>
+          {change != null && (
+            <div className="flex items-center gap-1 mt-1 font-mono text-[12px] font-bold" style={{ color: priceColor }}>
+              {isUp ? <TrendingUp size={12} /> : isDown ? <TrendingDown size={12} /> : null}
+              {change > 0 ? '+' : ''}{change.toFixed(2)}
+              {changePct != null && <span className="text-[10px]">({changePct > 0 ? '+' : ''}{changePct.toFixed(2)}%)</span>}
+            </div>
+          )}
+        </div>
+        <div className="flex-1" />
+        {a?.recommendation && (
+          <div
+            className="px-3 py-1.5 rounded-sm border font-mono text-[11px] font-bold tracking-wider"
+            style={{ color: recColor, borderColor: recColor + '44', background: recColor + '15' }}
+          >
+            {a.recommendation}
+          </div>
+        )}
+      </div>
+
+      {/* 52-week range bar */}
+      {range52Low && range52High && pricePctInRange != null && (
+        <div>
+          <div className="flex justify-between text-[9px] font-mono text-terminal-dim/50 mb-1">
+            <span>52W Low: ${range52Low.toFixed(2)}</span>
+            <span>52W High: ${range52High.toFixed(2)}</span>
+          </div>
+          <div className="relative h-1.5 bg-terminal-border rounded-full overflow-hidden">
+            <div
+              className="absolute top-0 bottom-0 w-1 bg-terminal-accent rounded-full"
+              style={{ left: `${Math.max(0, Math.min(100, pricePctInRange))}%` }}
+            />
+            <div
+              className="h-full rounded-full"
+              style={{ width: `${Math.max(0, Math.min(100, pricePctInRange))}%`, background: priceColor + '40' }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Key metrics grid */}
+      <div className="grid grid-cols-4 gap-3">
+        <Metric label="MKT CAP" value={fmtMarketCap(profile.market_cap)} />
+        <Metric label="P/E" value={profile.pe_ratio != null ? profile.pe_ratio.toFixed(1) : '—'} />
+        <Metric label="BETA" value={profile.beta != null ? profile.beta.toFixed(2) : '—'} />
+        <Metric label="DIV YIELD" value={profile.dividend_yield != null ? `${(profile.dividend_yield * 100).toFixed(2)}%` : '—'} />
+        <Metric label="REV/SH" value={profile.revenue_ttm != null ? `$${profile.revenue_ttm.toFixed(2)}` : '—'} />
+        <Metric label="MARGIN" value={profile.profit_margin != null ? `${(profile.profit_margin * 100).toFixed(1)}%` : '—'} />
+        <Metric label="ROE" value={profile.roe != null ? `${(profile.roe * 100).toFixed(1)}%` : '—'} />
+        <Metric label="D/E" value={profile.debt_to_equity != null ? profile.debt_to_equity.toFixed(2) : '—'} />
+      </div>
+
+      {/* Analyst ratings */}
+      {a && a.total_analysts > 0 && (
+        <div className="border-t border-terminal-border/40 pt-4">
+          <p className="text-[10px] font-mono text-terminal-dim tracking-widest uppercase mb-3">
+            Analyst Consensus · {a.total_analysts} analysts
+          </p>
+          <div className="flex items-center gap-2 mb-3">
+            <RatingBar label="BUY" count={a.rating_counts.buy} total={a.total_analysts} color="#22c55e" />
+            <RatingBar label="HOLD" count={a.rating_counts.hold} total={a.total_analysts} color="#eab308" />
+            <RatingBar label="SELL" count={a.rating_counts.sell} total={a.total_analysts} color="#ef4444" />
+          </div>
+          {pt?.mean != null && (
+            <div className="flex items-center gap-4 text-[10px] font-mono">
+              <span className="text-terminal-dim">Price Target:</span>
+              <span className="text-terminal-text font-bold">${pt.mean.toFixed(2)}</span>
+              {ptUpside != null && (
+                <span style={{ color: ptUpside > 0 ? '#22c55e' : '#ef4444' }} className="font-bold">
+                  {ptUpside > 0 ? '+' : ''}{ptUpside.toFixed(1)}% upside
+                </span>
+              )}
+              {pt.high != null && <span className="text-terminal-dim/50">H: ${pt.high.toFixed(2)}</span>}
+              {pt.low != null && <span className="text-terminal-dim/50">L: ${pt.low.toFixed(2)}</span>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Recent analyst ratings */}
+      {a?.recent && a.recent.length > 0 && (
+        <div className="border-t border-terminal-border/40 pt-3">
+          <p className="text-[10px] font-mono text-terminal-dim tracking-widest uppercase mb-2">
+            Recent Coverage
+          </p>
+          <div className="space-y-1">
+            {a.recent.slice(0, 6).map((r, i) => {
+              const c = r.rating === 'BUY' ? '#22c55e' : r.rating === 'SELL' ? '#ef4444' : '#eab308'
+              return (
+                <div key={i} className="flex items-center gap-2 text-[10px] font-mono">
+                  <span style={{ color: c }} className="font-bold w-10">{r.rating}</span>
+                  <span className="text-terminal-text/70">{r.firm}</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Industries */}
+      {profile.industries.length > 0 && (
+        <div className="border-t border-terminal-border/40 pt-3">
+          <p className="text-[10px] font-mono text-terminal-dim tracking-widest uppercase mb-2">
+            Classification
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {profile.industries.map((ind, i) => (
+              <span key={i} className="text-[9px] font-mono px-2 py-0.5 rounded-sm border border-terminal-border text-terminal-dim/70">
+                {ind.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Top shareholders */}
+      {profile.shareholders.institutions.length > 0 && (
+        <div className="border-t border-terminal-border/40 pt-3">
+          <p className="text-[10px] font-mono text-terminal-dim tracking-widest uppercase mb-2">
+            Top Shareholders
+          </p>
+          <div className="space-y-1">
+            {profile.shareholders.institutions.slice(0, 5).map((s, i) => (
+              <div key={i} className="flex items-center justify-between text-[10px] font-mono">
+                <span className="text-terminal-text/70">{s.name}</span>
+                {s.pct_held != null && <span className="text-terminal-dim">{s.pct_held.toFixed(1)}%</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
-// Article noise — exclude even from tech sources if these dominate the headline
-const ARTICLE_NOISE_TERMS = [
-  'drone strike', 'missile attack', 'military offensive',
-  'hurricane ', 'earthquake ', 'wildfire', 'tsunami',
-  ' nba ', ' nfl ', ' mlb ', 'world cup ', 'olympic',
-  'drug cartel', 'fentanyl', 'opioid',
-  'box office ', 'film awards', 'oscars',
-]
-
-function isTechArticle(article: RawArticle): boolean {
-  if (!article.title) return false
-  const src   = article.source_id ?? ''
-  const title = article.title.toLowerCase()
-
-  // Block hard noise even from tech sources
-  if (ARTICLE_NOISE_TERMS.some(n => title.includes(n))) return false
-
-  const hasTechKw  = TECH_ALL_KEYWORDS.some(kw => title.includes(kw))
-  const hasSVEntity = SV_ALL.some(sv => title.includes(sv.trim()))
-
-  // Dedicated tech source: include if title has any tech signal
-  if (TECH_SOURCE_IDS.has(src)) return hasTechKw || hasSVEntity
-
-  // General news source: need both a tech keyword AND an SV entity
-  return hasTechKw && hasSVEntity
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-terminal-surface/30 border border-terminal-border/50 rounded-sm px-2.5 py-2">
+      <div className="text-[8px] font-mono text-terminal-dim/50 tracking-widest uppercase">{label}</div>
+      <div className="text-[12px] font-mono font-bold text-terminal-text mt-0.5">{value}</div>
+    </div>
+  )
 }
 
-function timeAgo(iso: string | null): string {
-  if (!iso) return ''
-  const diff = Date.now() - new Date(iso).getTime()
-  const m = Math.floor(diff / 60000)
-  if (m < 60)  return `${m}m`
-  const h = Math.floor(m / 60)
-  if (h < 24)  return `${h}h`
-  return `${Math.floor(h / 24)}d`
+function RatingBar({ label, count, total, color }: { label: string; count: number; total: number; color: string }) {
+  const pct = total > 0 ? (count / total * 100) : 0
+  return (
+    <div className="flex-1">
+      <div className="flex items-center justify-between mb-0.5">
+        <span className="text-[8px] font-mono font-bold" style={{ color }}>{label}</span>
+        <span className="text-[8px] font-mono text-terminal-dim">{count}</span>
+      </div>
+      <div className="h-1.5 bg-terminal-border rounded-full overflow-hidden">
+        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
+      </div>
+    </div>
+  )
 }
 
-// ─── Cluster card (compact) ───────────────────────────────────────────────────
+// ─── AI Briefing button + modal ─────────────────────────────────────────────
+
+function SVAISummary({ clusters }: { clusters: EventCluster[] }) {
+  const [analysis, setAnalysis]   = useState<string | null>(null)
+  const [loading,  setLoading]    = useState(false)
+  const [error,    setError]      = useState(false)
+  const [modalOpen, setModalOpen] = useState(false)
+
+  const topCluster = clusters[0]
+
+  const generate = useCallback(() => {
+    if (!topCluster) return
+    setModalOpen(true)
+    if (analysis || loading) return
+    setLoading(true)
+    setError(false)
+    api.clusters.deepdive(topCluster.id)
+      .then(res => { setAnalysis(res.analysis); setLoading(false) })
+      .catch(() => { setError(true); setLoading(false) })
+  }, [topCluster, analysis, loading])
+
+  const closeModal = useCallback(() => setModalOpen(false), [])
+
+  return (
+    <>
+      <button
+        onClick={generate}
+        disabled={!topCluster}
+        className="w-full flex items-center gap-2 px-4 py-2 border-b border-terminal-border bg-terminal-surface/20 hover:bg-terminal-muted/20 transition-colors disabled:opacity-40"
+      >
+        <Sparkles size={10} className="text-terminal-accent flex-shrink-0" />
+        <span className="text-[9px] font-mono tracking-widest text-terminal-accent">AI BRIEFING</span>
+        {topCluster && (
+          <span className="text-[8px] font-mono text-terminal-dim/50 truncate flex-1 text-left ml-1">
+            — {topCluster.label}
+          </span>
+        )}
+        <span className="text-[7px] font-mono text-terminal-dim/40 ml-auto flex-shrink-0">
+          CLICK TO GENERATE
+        </span>
+      </button>
+
+      <AnimatePresence>
+        {modalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+            onClick={closeModal}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="relative w-full max-w-2xl max-h-[80vh] mx-4 bg-terminal-bg border border-terminal-border rounded-sm shadow-2xl flex flex-col"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-2 px-4 py-3 border-b border-terminal-border flex-shrink-0">
+                <Sparkles size={12} className="text-terminal-accent flex-shrink-0" />
+                <span className="text-[10px] font-mono tracking-widest text-terminal-accent">AI BRIEFING</span>
+                {topCluster && (
+                  <span className="text-[9px] font-mono text-terminal-dim/50 truncate flex-1 ml-1">
+                    — {topCluster.label}
+                  </span>
+                )}
+                <button onClick={closeModal} className="text-terminal-dim hover:text-terminal-text transition-colors flex-shrink-0">
+                  <X size={14} />
+                </button>
+              </div>
+
+              <div className="overflow-y-auto scrollbar-thin px-4 py-4 flex-1">
+                {loading && (
+                  <div className="space-y-2">
+                    {[1, 2, 3, 4, 5, 6].map(i => (
+                      <div key={i} className="h-3 bg-terminal-surface rounded animate-pulse"
+                        style={{ width: `${[100, 95, 88, 92, 78, 85][i - 1]}%` }} />
+                    ))}
+                  </div>
+                )}
+                {error && (
+                  <p className="text-[10px] font-mono text-terminal-dim/40 italic">
+                    Analysis unavailable. The AI service may be busy — try again in a moment.
+                  </p>
+                )}
+                {analysis && (
+                  <p className="text-[11px] font-mono text-terminal-text/80 leading-relaxed whitespace-pre-wrap">
+                    {analysis}
+                  </p>
+                )}
+                {!loading && !error && !analysis && (
+                  <p className="text-[10px] font-mono text-terminal-dim/40 italic">
+                    No briefing available.
+                  </p>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
+  )
+}
+
+// ─── Cluster card ─────────────────────────────────────────────────────────────
 
 function SVClusterCard({ cluster, onSelect }: { cluster: EventCluster; onSelect: (id: string) => void }) {
   const tier  = getVolatilityTier(cluster.volatility)
@@ -465,118 +837,6 @@ function ArticleRow({ article }: { article: RawArticle }) {
   )
 }
 
-// ─── AI Briefing button + modal ─────────────────────────────────────────────
-
-function SVAISummary({ clusters }: { clusters: EventCluster[] }) {
-  const [analysis, setAnalysis]   = useState<string | null>(null)
-  const [loading,  setLoading]    = useState(false)
-  const [error,    setError]      = useState(false)
-  const [modalOpen, setModalOpen] = useState(false)
-
-  const topCluster = clusters[0]
-
-  // Only fetch when the user clicks the button — never on mount/reload
-  const generate = useCallback(() => {
-    if (!topCluster) return
-    setModalOpen(true)
-    if (analysis || loading) return
-    setLoading(true)
-    setError(false)
-    api.clusters.deepdive(topCluster.id)
-      .then(res => { setAnalysis(res.analysis); setLoading(false) })
-      .catch(() => { setError(true); setLoading(false) })
-  }, [topCluster, analysis, loading])
-
-  const closeModal = useCallback(() => setModalOpen(false), [])
-
-  return (
-    <>
-      <button
-        onClick={generate}
-        disabled={!topCluster}
-        className="w-full flex items-center gap-2 px-4 py-2 border-b border-terminal-border bg-terminal-surface/20 hover:bg-terminal-muted/20 transition-colors disabled:opacity-40"
-      >
-        <Sparkles size={10} className="text-terminal-accent flex-shrink-0" />
-        <span className="text-[9px] font-mono tracking-widest text-terminal-accent">AI BRIEFING</span>
-        {topCluster && (
-          <span className="text-[8px] font-mono text-terminal-dim/50 truncate flex-1 text-left ml-1">
-            — {topCluster.label}
-          </span>
-        )}
-        <span className="text-[7px] font-mono text-terminal-dim/40 ml-auto flex-shrink-0">
-          CLICK TO GENERATE
-        </span>
-      </button>
-
-      <AnimatePresence>
-        {modalOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-            onClick={closeModal}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              className="relative w-full max-w-2xl max-h-[80vh] mx-4 bg-terminal-bg border border-terminal-border rounded-sm shadow-2xl flex flex-col"
-              onClick={e => e.stopPropagation()}
-            >
-              {/* Header */}
-              <div className="flex items-center gap-2 px-4 py-3 border-b border-terminal-border flex-shrink-0">
-                <Sparkles size={12} className="text-terminal-accent flex-shrink-0" />
-                <span className="text-[10px] font-mono tracking-widest text-terminal-accent">AI BRIEFING</span>
-                {topCluster && (
-                  <span className="text-[9px] font-mono text-terminal-dim/50 truncate flex-1 ml-1">
-                    — {topCluster.label}
-                  </span>
-                )}
-                <button
-                  onClick={closeModal}
-                  className="text-terminal-dim hover:text-terminal-text transition-colors flex-shrink-0"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-
-              {/* Body */}
-              <div className="overflow-y-auto scrollbar-thin px-4 py-4 flex-1">
-                {loading && (
-                  <div className="space-y-2">
-                    {[1, 2, 3, 4, 5, 6].map(i => (
-                      <div key={i} className="h-3 bg-terminal-surface rounded animate-pulse"
-                        style={{ width: `${[100, 95, 88, 92, 78, 85][i - 1]}%` }} />
-                    ))}
-                  </div>
-                )}
-                {error && (
-                  <p className="text-[10px] font-mono text-terminal-dim/40 italic">
-                    Analysis unavailable. The AI service may be busy — try again in a moment.
-                  </p>
-                )}
-                {analysis && (
-                  <p className="text-[11px] font-mono text-terminal-text/80 leading-relaxed whitespace-pre-wrap">
-                    {analysis}
-                  </p>
-                )}
-                {!loading && !error && !analysis && (
-                  <p className="text-[10px] font-mono text-terminal-dim/40 italic">
-                    No briefing available.
-                  </p>
-                )}
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </>
-  )
-}
-
 // ─── Main component ───────────────────────────────────────────────────────────
 
 interface Props {
@@ -589,7 +849,8 @@ export function TechValleyView({ onClusterSelect }: Props) {
   const [articles,    setArticles]    = useState<RawArticle[]>([])
   const [loading,     setLoading]     = useState(true)
   const [refreshing,  setRefreshing]  = useState(false)
-  const [activeTab,   setActiveTab]   = useState<'events' | 'funding' | 'articles'>('events')
+  const [activeTab,   setActiveTab]   = useState<'events' | 'deals'>('events')
+  const [companyModal, setCompanyModal] = useState<string | null>(null)
   const { lastClusterUpdate, lastArticle } = useWebSocket()
 
   const load = useCallback(async (showRefresh = false) => {
@@ -609,7 +870,6 @@ export function TechValleyView({ onClusterSelect }: Props) {
 
   useEffect(() => { load() }, [load])
 
-  // Live updates from WebSocket
   useEffect(() => {
     if (lastClusterUpdate) {
       setAllClusters(prev => {
@@ -639,7 +899,7 @@ export function TechValleyView({ onClusterSelect }: Props) {
 
   const fundingClusters = useMemo(() =>
     allClusters
-      .filter(c => isSVCluster(c) && isFundingCluster(c))
+      .filter(isFundingCluster)
       .sort((a, b) => b.volatility - a.volatility),
     [allClusters]
   )
@@ -650,19 +910,18 @@ export function TechValleyView({ onClusterSelect }: Props) {
   )
 
   const TABS = [
-    { id: 'events'   as const, label: 'EVENTS',   icon: Cpu,         count: svClusters.length      },
-    { id: 'funding'  as const, label: 'DEALS',     icon: DollarSign,  count: fundingClusters.length },
-    { id: 'articles' as const, label: 'ARTICLES',  icon: Newspaper,   count: techArticles.length    },
+    { id: 'events'  as const, label: 'EVENTS', icon: Cpu,        count: svClusters.length      },
+    { id: 'deals'   as const, label: 'DEALS',  icon: DollarSign,  count: fundingClusters.length },
   ]
 
-  const displayItems = activeTab === 'events' ? svClusters : activeTab === 'funding' ? fundingClusters : []
+  const displayItems = activeTab === 'events' ? svClusters : fundingClusters
 
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden">
-      {/* Stock strip */}
-      <StockStrip onTickerClick={ticker => navigate(`/splc/${ticker}`)} />
+      {/* Company card strip */}
+      <StockStrip onCardClick={ticker => setCompanyModal(ticker)} />
 
-      {/* AI Summary */}
+      {/* AI Briefing button */}
       {svClusters.length > 0 && <SVAISummary clusters={svClusters} />}
 
       {/* Panel header + tab bar */}
@@ -721,9 +980,8 @@ export function TechValleyView({ onClusterSelect }: Props) {
         </div>
       </div>
 
-      {/* Content */}
+      {/* Content: left = cluster feed, right = articles (always visible) */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
-
         {/* Left: cluster events / deals */}
         <div className="flex-[60] min-w-0 overflow-y-auto scrollbar-thin">
           {loading ? (
@@ -736,61 +994,44 @@ export function TechValleyView({ onClusterSelect }: Props) {
             <div className="flex flex-col items-center justify-center h-40 gap-2 text-terminal-dim/40">
               <Cpu size={24} />
               <p className="text-[10px] font-mono">
-                {activeTab === 'funding' ? 'No active funding/deal clusters' : 'No active SV clusters'}
+                {activeTab === 'deals' ? 'No active deal clusters' : 'No active SV clusters'}
               </p>
             </div>
           ) : (
             <div className="p-3 space-y-1.5">
-              {activeTab === 'articles' ? (
-                techArticles.map(a => <ArticleRow key={a.id} article={a} />)
-              ) : (
-                <AnimatePresence>
-                  {displayItems.map(c => (
-                    <SVClusterCard key={c.id} cluster={c} onSelect={onClusterSelect} />
-                  ))}
-                </AnimatePresence>
-              )}
+              <AnimatePresence>
+                {displayItems.map(c => (
+                  <SVClusterCard key={c.id} cluster={c} onSelect={onClusterSelect} />
+                ))}
+              </AnimatePresence>
             </div>
           )}
         </div>
 
-        {/* Right: tech articles (always visible alongside events/deals) */}
-        {activeTab !== 'articles' && (
-          <div className="flex-[40] min-w-0 border-l border-terminal-border overflow-y-auto scrollbar-thin">
-            <div className="px-3 py-2 border-b border-terminal-border/50 flex items-center gap-2">
-              <Newspaper size={10} className="text-terminal-dim" />
-              <span className="text-[8px] font-mono text-terminal-dim tracking-widest">TECH NEWS</span>
-              <span className="text-[7px] font-mono text-terminal-dim/30 ml-auto">{techArticles.length} stories</span>
-            </div>
-            {techArticles.map(a => <ArticleRow key={a.id} article={a} />)}
+        {/* Right: live tech articles (always visible) */}
+        <div className="flex-[40] min-w-0 border-l border-terminal-border overflow-y-auto scrollbar-thin">
+          <div className="px-3 py-2 border-b border-terminal-border/50 flex items-center gap-2 sticky top-0 bg-terminal-bg z-10">
+            <Newspaper size={10} className="text-terminal-dim" />
+            <span className="text-[8px] font-mono text-terminal-dim tracking-widest">TECH NEWS</span>
+            <span className="text-[7px] font-mono text-terminal-dim/30 ml-auto">{techArticles.length} stories</span>
           </div>
-        )}
-
-        {/* Articles tab: full width */}
-        {activeTab === 'articles' && (
-          <div className="flex-[40] min-w-0 border-l border-terminal-border overflow-y-auto scrollbar-thin">
-            <div className="px-3 py-2 border-b border-terminal-border/50">
-              <span className="text-[8px] font-mono text-terminal-dim tracking-widest">TECH SOURCES BREAKDOWN</span>
+          {techArticles.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-20 gap-1 text-terminal-dim/30">
+              <Newspaper size={18} />
+              <p className="text-[9px] font-mono">No tech articles yet</p>
             </div>
-            <div className="p-3 space-y-1">
-              {Array.from(
-                techArticles.reduce((acc, a) => {
-                  const src = a.source_id ?? 'unknown'
-                  acc.set(src, (acc.get(src) ?? 0) + 1)
-                  return acc
-                }, new Map<string, number>())
-              )
-                .sort((a, b) => b[1] - a[1])
-                .map(([src, count]) => (
-                  <div key={src} className="flex items-center justify-between">
-                    <span className="text-[9px] font-mono text-terminal-dim uppercase">{src.replace(/_/g, ' ')}</span>
-                    <span className="text-[9px] font-mono text-terminal-accent">{count}</span>
-                  </div>
-                ))}
-            </div>
-          </div>
-        )}
+          ) : (
+            techArticles.map(a => <ArticleRow key={a.id} article={a} />)
+          )}
+        </div>
       </div>
+
+      {/* Company detail modal */}
+      <AnimatePresence>
+        {companyModal && (
+          <CompanyDetailModal ticker={companyModal} onClose={() => setCompanyModal(null)} />
+        )}
+      </AnimatePresence>
     </div>
   )
 }

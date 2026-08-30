@@ -360,13 +360,23 @@ export interface CompanyProfile {
   employees:            number | null
   market_cap:           number | null
   current_price:        number | null
+  change:               number | null
+  change_pct:           number | null
+  day_high:             number | null
+  day_low:              number | null
+  day_open:             number | null
+  prev_close:           number | null
   pe_ratio:             number | null
   forward_pe:           number | null
-  dividend_yield:       number
+  dividend_yield:       number | null
   beta:                 number | null
   fifty_two_week_high:  number | null
   fifty_two_week_low:   number | null
   avg_volume:           number | null
+  revenue_ttm:          number | null
+  profit_margin:        number | null
+  roe:                  number | null
+  debt_to_equity:       number | null
   industries: CompanyIndustry[]
   shareholders: {
     insider_pct:     number
@@ -377,7 +387,7 @@ export interface CompanyProfile {
   }
   analysts: {
     rating_counts:  { buy: number; hold: number; sell: number }
-    price_target:   { current: number; mean: number; high: number; low: number }
+    price_target:   { current: number | null; mean: number | null; high: number | null; low: number | null }
     total_analysts: number
     recommendation: string
     recent:         AnalystRating[]

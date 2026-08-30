@@ -26,6 +26,20 @@ FINNHUB_BASE = "https://finnhub.io/api/v1"
 _UA          = {"User-Agent": "Bloomberg-Terminal research@company.com"}
 
 
+def _recommendation_label(rec: dict) -> str:
+    """Convert Finnhub recommendation counts into a Buy/Hold/Sell label."""
+    if not rec:
+        return ""
+    buy  = (rec.get("buy", 0) or 0) + (rec.get("strongBuy", 0) or 0)
+    sell = (rec.get("sell", 0) or 0) + (rec.get("strongSell", 0) or 0)
+    hold = rec.get("hold", 0) or 0
+    if buy > sell and buy >= hold:
+        return "BUY"
+    if sell > buy and sell >= hold:
+        return "SELL"
+    return "HOLD"
+
+
 # ─── Finnhub ──────────────────────────────────────────────────────────────────
 
 async def _finnhub(path: str, params: dict, api_key: str) -> Any:
@@ -244,16 +258,20 @@ async def get_company_profile(ticker: str, redis_client=None, cik: str | None = 
     # ── CIK resolution + Finnhub + EDGAR in parallel ──────────────────────
     resolved_cik = cik or await _edgar_cik(ticker_upper)
 
-    profile_raw, rec_raw, peers_raw, shareholders = await asyncio.gather(
+    profile_raw, rec_raw, peers_raw, shareholders, quote_raw, metric_raw = await asyncio.gather(
         _finnhub("stock/profile2",      {"symbol": ticker_upper},  api_key),
         _finnhub("stock/recommendation", {"symbol": ticker_upper}, api_key),
         _finnhub("stock/peers",          {"symbol": ticker_upper}, api_key),
         _edgar_shareholders(resolved_cik or ""),
+        _finnhub("quote",                {"symbol": ticker_upper},  api_key),
+        _finnhub("stock/metric",         {"symbol": ticker_upper, "metric": "all"}, api_key),
     )
 
     profile_raw   = profile_raw   or {}
     rec_raw       = rec_raw       or []
     peers_raw     = peers_raw     or []
+    quote_raw     = quote_raw     or {}
+    metric_raw    = (metric_raw   or {}).get("metric", {}) or {}
     company_name  = profile_raw.get("name") or ticker_upper
 
     # ── Wikipedia + LLM (board + analyst firms) ───────────────────────────
@@ -300,6 +318,28 @@ async def get_company_profile(ticker: str, redis_client=None, cik: str | None = 
         "logo":              profile_raw.get("logo", ""),
         "peers":             peers_raw,
         "industries":        industries,
+        # ── Real-time quote (from Finnhub /quote) ──
+        "current_price":     quote_raw.get("c"),
+        "change":            quote_raw.get("d"),
+        "change_pct":        quote_raw.get("dp"),
+        "day_high":          quote_raw.get("h"),
+        "day_low":           quote_raw.get("l"),
+        "day_open":          quote_raw.get("o"),
+        "prev_close":        quote_raw.get("pc"),
+        # ── Key metrics (from Finnhub /stock/metric) ──
+        "pe_ratio":          metric_raw.get("peNormalizedAnnual"),
+        "forward_pe":        metric_raw.get("peExclExtraTTM"),
+        "dividend_yield":    metric_raw.get("dividendYieldIndicated"),
+        "beta":              metric_raw.get("beta"),
+        "fifty_two_week_high": metric_raw.get("52WeekHigh"),
+        "fifty_two_week_low":  metric_raw.get("52WeekLow"),
+        "avg_volume":        metric_raw.get("10DayAverageTradingVolume"),
+        "employees":         metric_raw.get("numberOfEmployees"),
+        "revenue_ttm":       metric_raw.get("revenuePerShareTTM"),
+        "profit_margin":     metric_raw.get("netProfitMarginTTM"),
+        "roe":               metric_raw.get("roeTTM"),
+        "debt_to_equity":    metric_raw.get("totalDebt/totalEquityAnnual"),
+        # ── Analyst consensus ──
         "shareholders": {
             "institutions": shareholders,
             "mutual_funds": [],
@@ -307,6 +347,13 @@ async def get_company_profile(ticker: str, redis_client=None, cik: str | None = 
         "analysts": {
             "rating_counts":  rating_counts,
             "total_analysts": sum(rating_counts.values()),
+            "price_target": {
+                "mean":  metric_raw.get("targetMeanPrice"),
+                "high":  metric_raw.get("targetHighPrice"),
+                "low":   metric_raw.get("targetLowPrice"),
+                "current": quote_raw.get("c"),
+            },
+            "recommendation": _recommendation_label(latest_rec),
             "recent":         recent_ratings,
         },
         "board": board,
