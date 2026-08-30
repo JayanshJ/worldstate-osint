@@ -65,6 +65,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('storage', handler)
   }, [])
 
+  // Centralised logout on 401 from the API client. api.ts clears the token
+  // and dispatches 'auth:unauthorized'; here we update local state so the app
+  // re-renders to the login view without a full page navigation (which would
+  // abort in-flight requests and lose UI state).
+  useEffect(() => {
+    const onUnauth = () => {
+      setToken(null)
+      setUser(null)
+    }
+    window.addEventListener('auth:unauthorized', onUnauth)
+    return () => window.removeEventListener('auth:unauthorized', onUnauth)
+  }, [])
+
   return (
     <AuthContext.Provider value={{ token, user, login, logout }}>
       {children}

@@ -16,10 +16,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.signal import MarketSignal
+from app.models.user import User
 
 router       = APIRouter(dependencies=[Depends(get_current_user)])
-public_router = APIRouter()   # no auth — debug / status only
+public_router = APIRouter()   # no auth — status only
 logger = logging.getLogger(__name__)
+
+
+async def require_admin(user: User = Depends(get_current_user)) -> User:
+    from fastapi import HTTPException
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
 
 # Track whether a cycle is already running so we don't pile up requests
 _running = False
@@ -33,7 +41,7 @@ async def list_signals(
 ):
     """Return active market signals, newest first."""
     try:
-        q = select(MarketSignal).where(MarketSignal.is_active == True)
+        q = select(MarketSignal).where(MarketSignal.is_active.is_(True))
         if signal_type:
             q = q.where(MarketSignal.signal_type == signal_type.upper())
         q = q.order_by(MarketSignal.published_at.desc()).limit(limit)
@@ -61,7 +69,10 @@ async def _run_in_background():
 
 
 @router.post("/refresh")
-async def refresh_signals(background_tasks: BackgroundTasks):
+async def refresh_signals(
+    background_tasks: BackgroundTasks,
+    admin: Annotated[User, Depends(require_admin)],
+):
     """
     Kick off a signal fetch cycle in the background.
     Returns immediately — signals appear within ~30s as the worker completes.
@@ -90,8 +101,8 @@ async def signals_status(db: Annotated[AsyncSession, Depends(get_db)]):
         return {"ok": False, "error": str(e), "cycle_running": _running}
 
 
-@public_router.get("/debug")
-async def debug_signals():
+@router.get("/debug")
+async def debug_signals(admin: Annotated[User, Depends(require_admin)]):
     """
     Run each signal source and return counts + errors without saving to DB.
     Use this to diagnose why signals aren't appearing.
@@ -126,11 +137,38 @@ async def debug_signals():
     return results
 
 
+import re
+
+_TICKER_RE = re.compile(
+    r'(?:NYSE|NASDAQ|AMEX):\s*([A-Z]{1,5})'
+    r'|\$([A-Z]{2,5})\b'
+    r'|\(([A-Z]{2,5})\)(?=[\s,.])',
+    re.ASCII,
+)
+_TICKER_CTX_RE = re.compile(
+    r'\b([A-Z]{2,5})\s+(?:stock|shares|earnings)\b',
+    re.ASCII,
+)
+
+def _extract_ticker_from_text(text: str) -> str | None:
+    m = _TICKER_RE.search(text)
+    if m:
+        return next((g for g in m.groups() if g), None)
+    m2 = _TICKER_CTX_RE.search(text)
+    if m2:
+        return m2.group(1)
+    return None
+
+
 def _serialize(s: MarketSignal) -> dict:
+    # If ticker wasn't extracted at ingestion time, try extracting from headline+company
+    ticker = s.ticker
+    if not ticker:
+        ticker = _extract_ticker_from_text(f"{s.headline or ''} {s.company or ''}")
     return {
         "id":           str(s.id),
         "signal_type":  s.signal_type,
-        "ticker":       s.ticker,
+        "ticker":       ticker,
         "company":      s.company,
         "headline":     s.headline,
         "ai_summary":   s.ai_summary,

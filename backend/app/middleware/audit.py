@@ -3,6 +3,8 @@
 Every API request is written to `audit_logs` asynchronously so it never
 adds latency to the response path. Health-check requests are skipped.
 """
+import asyncio
+import logging
 import time
 import uuid
 from typing import Callable
@@ -15,6 +17,7 @@ from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
 from app.models.audit_log import AuditLog
 
+logger = logging.getLogger(__name__)
 _SKIP_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
 _ALGORITHM = "HS256"
 
@@ -48,22 +51,25 @@ async def audit_middleware(request: Request, call_next: Callable) -> Response:
 
     ip = request.client.host if request.client else None
 
-    # --- fire-and-forget DB insert ---
-    try:
-        async with AsyncSessionLocal() as session:
-            await session.execute(
-                insert(AuditLog).values(
-                    org_id=org_id,
-                    user_email=user_email,
-                    method=request.method,
-                    path=path,
-                    status_code=response.status_code,
-                    latency_ms=latency_ms,
-                    ip_address=ip,
+    # --- fire-and-forget DB insert (truly async — doesn't block response) ---
+    async def _insert_audit():
+        try:
+            async with AsyncSessionLocal() as session:
+                await session.execute(
+                    insert(AuditLog).values(
+                        org_id=org_id,
+                        user_email=user_email,
+                        method=request.method,
+                        path=path,
+                        status_code=response.status_code,
+                        latency_ms=latency_ms,
+                        ip_address=ip,
+                    )
                 )
-            )
-            await session.commit()
-    except Exception:
-        pass  # never let audit failure affect the response
+                await session.commit()
+        except Exception as e:
+            logger.debug("Audit insert failed: %s", e)
+
+    asyncio.create_task(_insert_audit())
 
     return response

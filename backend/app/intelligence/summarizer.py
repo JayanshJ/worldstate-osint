@@ -116,7 +116,7 @@ async def _summarize_with_gemini(articles: list[RawArticle]) -> dict:
         model_name=settings.gemini_model,
         system_instruction=SYSTEM_PROMPT,
         generation_config=genai.GenerationConfig(
-            temperature=0.1,        # low temp = factual, deterministic
+            temperature=1,        # low temp = factual, deterministic
             max_output_tokens=1024,
             response_mime_type="application/json",
         ),
@@ -137,8 +137,8 @@ async def _summarize_with_openai(articles: list[RawArticle]) -> dict:
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user",   "content": user_prompt},
         ],
-        temperature=0.1,
-        max_tokens=1024,
+        temperature=1,
+        max_completion_tokens=1024,
         response_format={"type": "json_object"},
     )
     return _parse_response(response.choices[0].message.content)
@@ -187,7 +187,7 @@ async def deepdive_cluster_articles(articles: list[RawArticle]) -> str:
                 model_name=settings.gemini_model,
                 system_instruction=DEEP_DIVE_SYSTEM_PROMPT,
                 generation_config=genai.GenerationConfig(
-                    temperature=0.2,
+                    temperature=1,
                     max_output_tokens=2048,
                 ),
             )
@@ -204,8 +204,8 @@ async def deepdive_cluster_articles(articles: list[RawArticle]) -> str:
             {"role": "system", "content": DEEP_DIVE_SYSTEM_PROMPT},
             {"role": "user",   "content": user_prompt},
         ],
-        temperature=0.2,
-        max_tokens=2048,
+        temperature=1,
+        max_completion_tokens=2048,
     )
     logger.info("Deep dive generated via GPT")
     return response.choices[0].message.content.strip()

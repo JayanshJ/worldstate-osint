@@ -3,6 +3,24 @@ import type { DigestStory, EventCluster, MarketStrategy, RawArticle, WatchlistEn
 const BASE = '/api/v1'
 const TOKEN_KEY = 'ws_token'
 
+export class UnauthorizedError extends Error {
+  constructor(path: string) {
+    super(`API 401: ${path}`)
+    this.name = 'UnauthorizedError'
+  }
+}
+
+// Centralised 401 handling: instead of hard-redirecting mid-flight (which
+// aborts every other in-flight fetch and wipes UI state), clear the token and
+// dispatch an event the AuthContext listens for. The context performs a single
+// graceful logout. Callers may also catch `UnauthorizedError` if they want to
+// react to a specific request failing auth.
+function handle401(path: string): never {
+  localStorage.removeItem(TOKEN_KEY)
+  window.dispatchEvent(new CustomEvent('auth:unauthorized'))
+  throw new UnauthorizedError(path)
+}
+
 function authHeaders(): Record<string, string> {
   const token = localStorage.getItem(TOKEN_KEY)
   return token ? { Authorization: `Bearer ${token}` } : {}
@@ -14,7 +32,7 @@ async function req<T>(path: string, params?: Record<string, string | number | bo
     Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)))
   }
   const res = await fetch(url.toString(), { headers: authHeaders() })
-  if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.href = '/' }
+  if (res.status === 401) handle401(path)
   if (!res.ok) throw new Error(`API ${res.status}: ${path}`)
   return res.json()
 }
@@ -25,21 +43,21 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body:    JSON.stringify(body),
   })
-  if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.href = '/' }
+  if (res.status === 401) handle401(path)
   if (!res.ok) throw new Error(`API ${res.status}: ${path}`)
   return res.json()
 }
 
 async function patchReq<T>(path: string): Promise<T> {
   const res = await fetch(path, { method: 'PATCH', headers: authHeaders() })
-  if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.href = '/' }
+  if (res.status === 401) handle401(path)
   if (!res.ok) throw new Error(`API ${res.status}: ${path}`)
   return res.json()
 }
 
 async function del(path: string): Promise<void> {
   const res = await fetch(path, { method: 'DELETE', headers: authHeaders() })
-  if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.href = '/' }
+  if (res.status === 401) handle401(path)
   if (!res.ok) throw new Error(`API ${res.status}: ${path}`)
 }
 
@@ -389,6 +407,8 @@ export interface VesselZone {
   significance: string
   threat:       string
   color:        string
+  commodities:     string[]
+  affected_sectors: string[]
 }
 
 export interface SystemStats {

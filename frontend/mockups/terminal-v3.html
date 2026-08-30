@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorldState — Terminal</title>
+<style>
+:root {
+  --bg: #0a0a0c;
+  --panel: #0f0f12;
+  --panel-2: #151519;
+  --hover: #1a1a1f;
+  --line: #1e1e24;
+  --line-2: #2a2a32;
+  --txt: #d4d4d8;
+  --txt-2: #8a8a92;
+  --txt-3: #5a5a62;
+  --cyan: #00b8d9;
+  --cyan-d: #007a9e;
+  --amber: #f5a623;
+  --green: #36d399;
+  --red: #f87272;
+  --yellow: #fbbf24;
+  --purple: #a78bfa;
+  --mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { height:100%; overflow:hidden; }
+body {
+  background: var(--bg);
+  color: var(--txt);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ═══ SIDEBAR ═══ */
+.side {
+  position: fixed; left:0; top:0; bottom:0;
+  width: 44px;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  display: flex; flex-direction: column; align-items: center;
+  padding: 8px 0; gap: 2px; z-index: 10;
+}
+.side-logo {
+  width: 28px; height: 28px;
+  background: var(--cyan); color: var(--bg);
+  font-weight: 700; font-size: 13px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 12px;
+}
+.side-btn {
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--txt-3); cursor: pointer; transition: color 0.1s;
+  position: relative;
+}
+.side-btn:hover { color: var(--txt-2); }
+.side-btn.on { color: var(--cyan); }
+.side-btn.on::before {
+  content:''; position:absolute; left:-8px; top:6px; bottom:6px; width:2px;
+  background: var(--cyan);
+}
+.side-sp { flex:1; }
+
+/* ═══ APP ═══ */
+.app { margin-left:44px; height:100vh; display:grid; grid-template-rows: 40px 28px 1fr 28px; }
+
+/* ═══ TOPBAR ═══ */
+.top {
+  display: flex; align-items: center; gap: 0;
+  background: var(--panel); border-bottom: 1px solid var(--line); height:40px;
+}
+.top-brand {
+  padding: 0 16px; font-size: 13px; font-weight: 700; letter-spacing: -0.02em;
+  display: flex; align-items: center; gap: 6px;
+}
+.top-brand .live {
+  width:6px; height:6px; border-radius:50%; background:var(--green);
+  box-shadow: 0 0 4px var(--green); animation: blink 2s infinite;
+}
+.top-brand span { color: var(--cyan); }
+.top-sep { width:1px; height:20px; background:var(--line); }
+
+.metal-row { display:flex; padding-left:8px; }
+.metal {
+  display:flex; align-items:center; gap:4px; padding: 4px 8px;
+  font-size: 10px; cursor: pointer; transition: background 0.1s;
+}
+.metal:hover { background: var(--hover); }
+.metal .s { color: var(--txt-3); }
+.metal .p { color: var(--txt); font-weight: 600; }
+.metal .c { font-size: 9px; }
+.metal .c.up { color: var(--green); }
+.metal .c.dn { color: var(--red); }
+
+.top-right { margin-left:auto; display:flex; align-items:center; gap:4px; padding-right:10px; }
+.top-search {
+  display:flex; align-items:center; gap:6px; padding: 4px 8px;
+  background: var(--bg); border: 1px solid var(--line);
+  color: var(--txt-3); font-size: 10px; cursor: pointer;
+  width: 200px; transition: border 0.1s;
+}
+.top-search:hover { border-color: var(--line-2); }
+.top-search kbd {
+  margin-left:auto; padding: 1px 4px; background:var(--panel-2);
+  border: 1px solid var(--line); font-size: 9px;
+}
+.tb-btn {
+  width:28px; height:28px; display:flex; align-items:center; justify-content:center;
+  color: var(--txt-2); cursor: pointer; position: relative;
+}
+.tb-btn:hover { color: var(--txt); }
+.tb-btn .bdg {
+  position:absolute; top:-2px; right:-2px; min-width:12px; height:12px; padding:0 3px;
+  background: var(--red); border-radius:6px; font-size:8px; font-weight:700;
+  display:flex; align-items:center; justify-content:center; color:#fff;
+}
+.tb-ava {
+  width:28px; height:28px; background: var(--cyan-d); color: var(--bg);
+  font-size: 11px; font-weight: 700; display:flex; align-items:center; justify-content:center;
+  cursor: pointer; margin-left:4px;
+}
+
+/* ═══ STATBAR ═══ */
+.statbar {
+  display:flex; align-items:center; background:var(--panel); border-bottom:1px solid var(--line);
+  height:28px; overflow-x:auto; scrollbar-width:none;
+}
+.statbar::-webkit-scrollbar { display:none; }
+.stat {
+  display:flex; align-items:center; gap:5px; padding: 0 12px; height:100%;
+  border-right: 1px solid var(--line); white-space:nowrap;
+}
+.stat .l { color: var(--txt-3); font-size: 9px; text-transform:uppercase; letter-spacing:0.06em; }
+.stat .v { color: var(--txt); font-weight: 600; font-size: 11px; }
+.stat .v.cy { color: var(--cyan); }
+.stat .v.gn { color: var(--green); }
+.stat .v.rd { color: var(--red); }
+.stat .d { width:5px; height:5px; border-radius:50%; }
+.tabs { margin-left:auto; display:flex; height:100%; }
+.tab {
+  display:flex; align-items:center; padding: 0 14px; height:100%;
+  font-size: 10px; font-weight:600; text-transform:uppercase; letter-spacing:0.08em;
+  color: var(--txt-3); cursor: pointer; border-right: 1px solid var(--line);
+  transition: all 0.1s;
+}
+.tab:hover { color: var(--txt-2); background: var(--hover); }
+.tab.on { color: var(--cyan); background: var(--bg); }
+
+/* ═══ MAIN ═══ */
+.main { display:grid; grid-template-columns: 1fr 1px 360px; overflow:hidden; min-height:0; }
+.vline { background: var(--line); width:1px; }
+
+/* ═══ PANELS ═══ */
+.pnl { display:flex; flex-direction:column; overflow:hidden; min-height:0; }
+.pnl-hdr {
+  display:flex; align-items:center; justify-content:space-between;
+  padding: 6px 12px; border-bottom:1px solid var(--line); flex-shrink:0;
+  background: var(--panel);
+}
+.pnl-hdr .t {
+  display:flex; align-items:center; gap:6px;
+  font-size: 10px; text-transform:uppercase; letter-spacing:0.1em; font-weight:600;
+  color: var(--txt-2);
+}
+.pnl-hdr .t .n { color: var(--cyan); }
+.pnl-hdr .t .c {
+  padding: 0 5px; background: var(--panel-2); border:1px solid var(--line);
+  font-size: 9px; color: var(--txt-3); font-weight:400; letter-spacing:0;
+}
+.pnl-act { display:flex; gap:2px; }
+.flt {
+  padding: 3px 8px; font-size: 10px; color: var(--txt-3); cursor: pointer;
+  border: 1px solid transparent; transition: all 0.1s; display:flex; align-items:center; gap:4px;
+}
+.flt:hover { color: var(--txt-2); background: var(--hover); }
+.flt.on { color: var(--cyan); background: rgba(0,184,217,0.08); border-color: rgba(0,184,217,0.2); }
+.flt .d { width:5px; height:5px; border-radius:50%; }
+
+.flt-row {
+  display:flex; align-items:center; gap:2px; padding: 6px 12px;
+  border-bottom:1px solid var(--line); flex-shrink:0; overflow-x:auto; scrollbar-width:none;
+}
+.flt-row::-webkit-scrollbar { display:none; }
+.flt-sep { width:1px; height:12px; background:var(--line); margin: 0 2px; }
+
+/* ═══ FEED LIST ═══ */
+.feed { flex:1; overflow-y:auto; scrollbar-width:thin; scrollbar-color: var(--line) transparent; }
+.feed::-webkit-scrollbar { width:4px; }
+.feed::-webkit-scrollbar-thumb { background: var(--line); }
+
+/* ═══ EVENT ROW ═══ */
+.ev {
+  border-bottom: 1px solid var(--line); padding: 8px 12px; cursor: pointer;
+  transition: background 0.1s; position: relative;
+}
+.ev:hover { background: var(--panel); }
+.ev.sel { background: var(--panel); }
+.ev.sel::before {
+  content:''; position:absolute; left:0; top:0; bottom:0; width:2px; background:var(--cyan);
+}
+
+.ev-top { display:flex; align-items:center; gap:8px; margin-bottom:5px; }
+.ev-cat {
+  font-size: 9px; text-transform:uppercase; letter-spacing:0.05em;
+  color: var(--txt-3); font-weight:600;
+}
+.ev-new {
+  padding: 1px 4px; background: rgba(0,184,217,0.1); border:1px solid rgba(0,184,217,0.2);
+  font-size: 8px; color: var(--cyan); font-weight:700; letter-spacing:0.05em;
+}
+.ev-time { font-size: 9px; color: var(--txt-3); margin-left:auto; }
+.ev-src { display:flex; align-items:center; gap:4px; font-size:9px; color:var(--txt-3); }
+.ev-src .dots { display:flex; gap:1.5px; }
+.ev-src .dots .d { width:4px; height:4px; border-radius:50%; }
+
+.ev-title {
+  font-size: 12px; color: var(--txt); line-height:1.3; margin-bottom: 5px;
+  font-weight: 500;
+}
+
+.ev-blts { display:flex; flex-direction:column; gap:2px; margin-bottom:6px; }
+.ev-blt { display:flex; gap:6px; font-size:10px; color:var(--txt-2); line-height:1.35; }
+.ev-blt::before { content:'›'; color:var(--txt-3); flex-shrink:0; }
+
+.ev-ftr {
+  display:flex; align-items:center; gap:6px; padding-top:5px;
+  border-top: 1px solid var(--line);
+}
+.ev-pills { display:flex; gap:3px; flex:1; flex-wrap:wrap; }
+.ev-pill {
+  padding: 1px 6px; background:var(--panel-2); border:1px solid var(--line);
+  font-size: 9px; color:var(--txt-2);
+}
+
+.volbar { display:flex; align-items:center; gap:3px; }
+.volbar .track { width:40px; height:2px; background:var(--line-2); }
+.volbar .fill { height:100%; }
+.volbar .num { font-size:9px; font-weight:600; color:var(--txt-2); min-width:20px; }
+
+.sent { font-size:9px; font-weight:600; padding:1px 5px; }
+.sent.pos { color:var(--green); background:rgba(54,211,153,0.08); }
+.sent.neg { color:var(--red); background:rgba(248,114,114,0.08); }
+.sent.neu { color:var(--txt-3); background:var(--panel-2); }
+
+/* ═══ RIGHT PANEL ═══ */
+.right { display:flex; flex-direction:column; background:var(--panel); border-left:1px solid var(--line); overflow:hidden; }
+.subtab-row { display:flex; border-bottom:1px solid var(--line); flex-shrink:0; }
+.subtab {
+  flex:1; padding: 6px 0; text-align:center; font-size:10px; font-weight:600;
+  text-transform:uppercase; letter-spacing:0.08em; color:var(--txt-3); cursor:pointer;
+  border-bottom:2px solid transparent; transition: all 0.1s;
+}
+.subtab:hover { color:var(--txt-2); }
+.subtab.on { color:var(--cyan); border-bottom-color:var(--cyan); }
+.subtab .n { font-size:8px; color:var(--txt-3); margin-left:2px; }
+
+.wl-box { padding: 8px 10px; border-bottom:1px solid var(--line); flex-shrink:0; }
+.wl-lbl { font-size:9px; color:var(--txt-3); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:5px; }
+.wl-items { display:flex; flex-wrap:wrap; gap:3px; }
+.wl-item {
+  display:flex; align-items:center; gap:4px; padding: 2px 6px;
+  background:var(--panel-2); border:1px solid var(--line); font-size:10px; color:var(--txt-2);
+}
+.wl-item .x { color:var(--txt-3); cursor:pointer; font-size:12px; line-height:1; }
+.wl-item .x:hover { color:var(--red); }
+.wl-inp {
+  margin-top:5px; width:100%; padding:4px 6px; background:var(--bg);
+  border:1px solid var(--line); color:var(--txt); font-size:10px; font-family:var(--mono);
+  outline:none;
+}
+.wl-inp:focus { border-color:var(--line-2); }
+.wl-inp::placeholder { color:var(--txt-3); }
+
+.art-list { flex:1; overflow-y:auto; scrollbar-width:thin; }
+.art-list::-webkit-scrollbar { width:4px; }
+.art-list::-webkit-scrollbar-thumb { background:var(--line); }
+
+.art {
+  display:flex; gap:8px; padding: 7px 10px; border-bottom:1px solid var(--line);
+  cursor:pointer; transition: background 0.1s;
+}
+.art:hover { background:var(--panel-2); }
+.art-strip { width:2px; flex-shrink:0; }
+.art-body { flex:1; min-width:0; }
+.art-title {
+  font-size: 11px; color: var(--txt); line-height:1.3; margin-bottom: 3px;
+  overflow:hidden; text-overflow:ellipsis; display:-webkit-box;
+  -webkit-line-clamp:2; -webkit-box-orient:vertical;
+}
+.art-meta { display:flex; align-items:center; gap:6px; font-size:9px; color:var(--txt-3); }
+.art-meta .src { color:var(--txt-2); font-weight:500; }
+.art-cred { width:5px; height:5px; border-radius:50%; }
+
+/* ═══ TICKER ═══ */
+.tkr {
+  display:flex; align-items:center; background:var(--panel); border-top:1px solid var(--line);
+  height:28px; overflow:hidden; position:relative;
+}
+.tkr-lbl {
+  display:flex; align-items:center; gap:5px; padding: 0 10px; height:100%;
+  background: var(--cyan); color: var(--bg); font-size:9px; font-weight:700;
+  letter-spacing:0.1em; flex-shrink:0; z-index:2;
+}
+.tkr-lbl .d { width:4px; height:4px; border-radius:50%; background:var(--bg); animation: blink 1.5s infinite; }
+.tkr-trk {
+  display:flex; align-items:center; gap:20px; padding-left:16px;
+  animation: scroll 45s linear infinite; white-space:nowrap;
+}
+.tkr-it { display:flex; align-items:center; gap:5px; font-size:10px; }
+.tkr-it .s { color:var(--txt-3); font-weight:500; }
+.tkr-it .t { color:var(--txt-2); }
+.tkr-it .v { font-size:9px; font-weight:600; padding: 0 4px; }
+.tkr-it .v.h { color:var(--red); background:rgba(248,114,114,0.08); }
+.tkr-it .v.m { color:var(--amber); background:rgba(245,166,35,0.08); }
+.tkr-it .v.c { color:var(--green); background:rgba(54,211,153,0.08); }
+.tkr::after {
+  content:''; position:absolute; right:0; top:0; bottom:0; width:50px;
+  background: linear-gradient(90deg, transparent, var(--panel)); z-index:1;
+}
+
+@keyframes blink { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+@keyframes scroll { 0% { transform:translateX(0); } 100% { transform:translateX(-50%); } }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<aside class="side">
+  <div class="side-logo">W</div>
+  <div class="side-btn on" title="Feed">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+  </div>
+  <div class="side-btn" title="Map">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 20l-5.5-2.5V5L9 7m0 13l6-2.5M9 20V7m6 10.5l5.5 2.5V7L15 4.5M15 14.5V4.5M15 4.5L9 7"/></svg>
+  </div>
+  <div class="side-btn" title="Alpha">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+  </div>
+  <div class="side-btn" title="Signals">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l3 9 4-18 3 9h4"/></svg>
+  </div>
+  <div class="side-btn" title="SPLC">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M6 9v6M9 18h6M15 15l3-6M6 15V6h6"/></svg>
+  </div>
+  <div class="side-btn" title="SV">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>
+  </div>
+  <div class="side-sp"></div>
+  <div class="side-btn" title="Settings">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+  </div>
+</aside>
+
+<div class="app">
+
+  <!-- TOPBAR -->
+  <header class="top">
+    <div class="top-brand"><div class="live"></div>Worldstate<span>.</span></div>
+    <div class="top-sep"></div>
+    <div class="metal-row">
+      <div class="metal"><span class="s">XAU</span><span class="p">2,647.30</span><span class="c up">+0.42%</span></div>
+      <div class="metal"><span class="s">XAG</span><span class="p">31.18</span><span class="c dn">-0.15%</span></div>
+      <div class="metal"><span class="s">XPT</span><span class="p">964.50</span><span class="c up">+0.88%</span></div>
+      <div class="metal"><span class="s">WTI</span><span class="p">71.92</span><span class="c dn">-1.24%</span></div>
+    </div>
+    <div class="top-right">
+      <div class="top-search">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        Search... <kbd>⌘K</kbd>
+      </div>
+      <div class="tb-btn" title="Alerts">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+        <span class="bdg">3</span>
+      </div>
+      <div class="tb-btn" title="Theme">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2"/></svg>
+      </div>
+      <div class="tb-ava">J</div>
+    </div>
+  </header>
+
+  <!-- STATBAR -->
+  <div class="statbar">
+    <div class="stat"><span class="l">ART/MIN</span><span class="v cy">14.2</span></div>
+    <div class="stat"><span class="l">CLUSTERS</span><span class="v">38</span></div>
+    <div class="stat"><div class="d" style="background:var(--green)"></div><span class="l">CALM</span><span class="v">12</span></div>
+    <div class="stat"><div class="d" style="background:var(--amber)"></div><span class="l">MOD</span><span class="v">15</span></div>
+    <div class="stat"><div class="d" style="background:var(--red)"></div><span class="l">HIGH</span><span class="v rd">8</span></div>
+    <div class="stat"><div class="d" style="background:#e91e63"></div><span class="l">CRIT</span><span class="v rd">3</span></div>
+    <div class="stat"><span class="l">SOURCES</span><span class="v gn">27/30</span></div>
+    <div class="tabs">
+      <div class="tab on">FEED</div>
+      <div class="tab">MAP</div>
+      <div class="tab">ALPHA</div>
+      <div class="tab">SIGNALS</div>
+      <div class="tab">SPLC</div>
+      <div class="tab">SV</div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <!-- LEFT: Event Feed -->
+    <div class="pnl">
+      <div class="pnl-hdr">
+        <div class="t"><span class="n">§</span> EVENT FEED <span class="c">38</span></div>
+      </div>
+      <div class="flt-row">
+        <div class="flt on">ALL</div>
+        <div class="flt"><div class="d" style="background:var(--green)"></div>CALM</div>
+        <div class="flt"><div class="d" style="background:var(--amber)"></div>MOD+</div>
+        <div class="flt"><div class="d" style="background:var(--red)"></div>HIGH</div>
+        <div class="flt"><div class="d" style="background:#e91e63"></div>CRIT</div>
+        <div class="flt-sep"></div>
+        <div class="flt">GEO</div>
+        <div class="flt">MKT</div>
+        <div class="flt">TECH</div>
+        <div class="flt">ENERGY</div>
+        <div class="flt">DEF</div>
+      </div>
+      <div class="feed">
+
+        <div class="ev sel">
+          <div class="ev-top">
+            <span class="ev-new">NEW</span>
+            <span class="ev-cat">GEO</span>
+            <div class="ev-src"><div class="dots"><div class="d" style="background:var(--cyan)"></div><div class="d" style="background:var(--amber)"></div><div class="d" style="background:var(--cyan)"></div><div class="d" style="background:var(--purple)"></div></div>7 src</div>
+            <span class="ev-time">3m</span>
+          </div>
+          <div class="ev-title">Red Sea shipping lane disrupted as Houthi forces target third vessel in 48h</div>
+          <div class="ev-blts">
+            <div class="ev-blt">Maersk suspends all Red Sea transits; 12% of global trade affected</div>
+            <div class="ev-blt">Brent crude futures surge 4.2% on supply chain fears</div>
+            <div class="ev-blt">US Central Command announces multinational naval task force</div>
+          </div>
+          <div class="ev-ftr">
+            <div class="ev-pills"><span class="ev-pill">Maersk</span><span class="ev-pill">Brent</span><span class="ev-pill">CENTCOM</span></div>
+            <div class="volbar"><span class="num" style="color:var(--red)">0.92</span><div class="track"><div class="fill" style="width:92%;background:var(--red)"></div></div></div>
+            <span class="sent neg">-0.71</span>
+          </div>
+        </div>
+
+        <div class="ev">
+          <div class="ev-top">
+            <span class="ev-cat">MKT</span>
+            <div class="ev-src"><div class="dots"><div class="d" style="background:var(--cyan)"></div><div class="d" style="background:var(--cyan)"></div><div class="d" style="background:var(--amber)"></div></div>5 src</div>
+            <span class="ev-time">12m</span>
+          </div>
+          <div class="ev-title">Fed signals pause on rate hikes as inflation cools to 3.1%</div>
+          <div class="ev-blts">
+            <div class="ev-blt">FOMC minutes reveal split committee — 4 of 12 favor continued tightening</div>
+            <div class="ev-blt">2-year Treasury yield drops 15bps; dollar index falls 0.8%</div>
+          </div>
+          <div class="ev-ftr">
+            <div class="ev-pills"><span class="ev-pill">Fed</span><span class="ev-pill">FOMC</span><span class="ev-pill">DXY</span></div>
+            <div class="volbar"><span class="num" style="color:var(--red)">0.78</span><div class="track"><div class="fill" style="width:78%;background:var(--red)"></div></div></div>
+            <span class="sent pos">+0.54</span>
+          </div>
+        </div>
+
+        <div class="ev">
+          <div class="ev-top">
+            <span class="ev-cat">TECH</span>
+            <div class="ev-src"><div class="dots"><div class="d" style="background:var(--cyan)"></div><div class="d" style="background:var(--purple)"></div><div class="d" style="background:var(--cyan)"></div></div>4 src</div>
+            <span class="ev-time">24m</span>
+          </div>
+          <div class="ev-title">Nvidia announces next-gen Blackwell GPU with 2.5x performance over Hopper</div>
+          <div class="ev-blts">
+            <div class="ev-blt">GB200 chip ships Q4; major cloud providers commit to infrastructure</div>
+            <div class="ev-blt">NVDA premarket +6.3%; semiconductor ETFs rally broadly</div>
+          </div>
+          <div class="ev-ftr">
+            <div class="ev-pills"><span class="ev-pill">NVDA</span><span class="ev-pill">Blackwell</span></div>
+            <div class="volbar"><span class="num" style="color:var(--amber)">0.55</span><div class="track"><div class="fill" style="width:55%;background:var(--amber)"></div></div></div>
+            <span class="sent pos">+0.68</span>
+          </div>
+        </div>
+
+        <div class="ev">
+          <div class="ev-top">
+            <span class="ev-cat">ENERGY</span>
+            <div class="ev-src"><div class="dots"><div class="d" style="background:var(--cyan)"></div><div class="d" style="background:var(--cyan)"></div></div>3 src</div>
+            <span class="ev-time">38m</span>
+          </div>
+          <div class="ev-title">OPEC+ extends production cuts through Q2 2026</div>
+          <div class="ev-blts">
+            <div class="ev-blt">Saudi Arabia and Russia agree to maintain 500K bpd voluntary cuts</div>
+            <div class="ev-blt">WTI crude holds above $70 on tightening supply outlook</div>
+          </div>
+          <div class="ev-ftr">
+            <div class="ev-pills"><span class="ev-pill">OPEC+</span><span class="ev-pill">WTI</span></div>
+            <div class="volbar"><span class="num" style="color:var(--green)">0.31</span><div class="track"><div class="fill" style="width:31%;background:var(--green)"></div></div></div>
+            <span class="sent neu">+0.12</span>
+          </div>
+        </div>
+
+        <div class="ev">
+          <div class="ev-top">
+            <span class="ev-cat">DEF</span>
+            <div class="ev-src"><div class="dots"><div class="d" style="background:var(--cyan)"></div><div class="d" style="background:var(--amber)"></div><div class="d" style="background:var(--cyan)"></div><div class="d" style="background:var(--purple)"></div><div class="d" style="background:var(--cyan)"></div></div>6 src</div>
+            <span class="ev-time">52m</span>
+          </div>
+          <div class="ev-title">Lockheed Martin secures $4.2B missile defense contract from Pentagon</div>
+          <div class="ev-blts">
+            <div class="ev-blt">THAAD system order — largest single contract in company history</div>
+            <div class="ev-blt">Includes co-production rights for allied nations</div>
+          </div>
+          <div class="ev-ftr">
+            <div class="ev-pills"><span class="ev-pill">LMT</span><span class="ev-pill">THAAD</span></div>
+            <div class="volbar"><span class="num" style="color:var(--amber)">0.48</span><div class="track"><div class="fill" style="width:48%;background:var(--amber)"></div></div></div>
+            <span class="sent pos">+0.35</span>
+          </div>
+        </div>
+
+        <div class="ev">
+          <div class="ev-top">
+            <span class="ev-cat">MKT</span>
+            <div class="ev-src"><div class="dots"><div class="d" style="background:var(--cyan)"></div><div class="d" style="background:var(--cyan)"></div></div>2 src</div>
+            <span class="ev-time">1h</span>
+          </div>
+          <div class="ev-title">Japanese yen stabilizes as BOJ signals end to negative rates</div>
+          <div class="ev-blts">
+            <div class="ev-blt">USD/JPY falls below 152; carry trade unwinds accelerate</div>
+          </div>
+          <div class="ev-ftr">
+            <div class="ev-pills"><span class="ev-pill">BOJ</span><span class="ev-pill">USD/JPY</span></div>
+            <div class="volbar"><span class="num" style="color:var(--green)">0.22</span><div class="track"><div class="fill" style="width:22%;background:var(--green)"></div></div></div>
+            <span class="sent neu">-0.08</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="vline"></div>
+
+    <!-- RIGHT: Live Feed + Watchlist -->
+    <div class="right">
+      <div class="subtab-row">
+        <div class="subtab on">LIVE <span class="n">42</span></div>
+        <div class="subtab">DIGEST</div>
+        <div class="subtab">BRIEF</div>
+      </div>
+      <div class="wl-box">
+        <div class="wl-lbl">WATCHLIST</div>
+        <div class="wl-items">
+          <span class="wl-item">NATO <span class="x">×</span></span>
+          <span class="wl-item">Fed <span class="x">×</span></span>
+          <span class="wl-item">NVDA <span class="x">×</span></span>
+          <span class="wl-item">Brent <span class="x">×</span></span>
+          <span class="wl-item">OPEC <span class="x">×</span></span>
+        </div>
+        <input class="wl-inp" placeholder="add entity, ticker, keyword..." />
+      </div>
+      <div class="art-list">
+        <div class="art">
+          <div class="art-strip" style="background:var(--cyan)"></div>
+          <div class="art-body">
+            <div class="art-title">Red Sea crisis: Major shipping companies reroute around Cape of Good Hope</div>
+            <div class="art-meta"><span class="src">Reuters</span><div class="art-cred" style="background:var(--green)"></div>2m</div>
+          </div>
+        </div>
+        <div class="art">
+          <div class="art-strip" style="background:var(--cyan)"></div>
+          <div class="art-body">
+            <div class="art-title">Federal Reserve officials signal patience on rate cuts amid sticky inflation</div>
+            <div class="art-meta"><span class="src">Bloomberg</span><div class="art-cred" style="background:var(--green)"></div>8m</div>
+          </div>
+        </div>
+        <div class="art">
+          <div class="art-strip" style="background:var(--amber)"></div>
+          <div class="art-body">
+            <div class="art-title">r/worldnews: Houthi spokesperson announces escalation in Red Sea ops</div>
+            <div class="art-meta"><span class="src">Reddit</span><div class="art-cred" style="background:var(--yellow)"></div>14m</div>
+          </div>
+        </div>
+        <div class="art">
+          <div class="art-strip" style="background:var(--cyan)"></div>
+          <div class="art-body">
+            <div class="art-title">Nvidia Blackwell architecture promises 2.5x leap in AI training performance</div>
+            <div class="art-meta"><span class="src">Ars Technica</span><div class="art-cred" style="background:var(--green)"></div>19m</div>
+          </div>
+        </div>
+        <div class="art">
+          <div class="art-strip" style="background:var(--purple)"></div>
+          <div class="art-body">
+            <div class="art-title">OPEC+ Joint Ministerial Monitoring Committee recommends extending voluntary cuts</div>
+            <div class="art-meta"><span class="src">S&P Global</span><div class="art-cred" style="background:var(--green)"></div>31m</div>
+          </div>
+        </div>
+        <div class="art">
+          <div class="art-strip" style="background:var(--cyan)"></div>
+          <div class="art-body">
+            <div class="art-title">Lockheed Martin awarded $4.2 billion contract for THAAD missile defense</div>
+            <div class="art-meta"><span class="src">Defense News</span><div class="art-cred" style="background:var(--green)"></div>47m</div>
+          </div>
+        </div>
+        <div class="art">
+          <div class="art-strip" style="background:var(--cyan)"></div>
+          <div class="art-body">
+            <div class="art-title">Bank of Japan ends negative interest rates, first hike in 17 years</div>
+            <div class="art-meta"><span class="src">FT</span><div class="art-cred" style="background:var(--green)"></div>1h</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- TICKER -->
+  <div class="tkr">
+    <div class="tkr-lbl"><div class="d"></div>LIVE</div>
+    <div class="tkr-trk">
+      <div class="tkr-it"><span class="s">REUTERS</span><span class="t">Red Sea shipping halted</span><span class="v h">92%</span></div>
+      <div class="tkr-it"><span class="s">BLOOMBERG</span><span class="t">Fed signals pause</span><span class="v h">78%</span></div>
+      <div class="tkr-it"><span class="s">ARSTECHNICA</span><span class="t">Nvidia Blackwell</span><span class="v m">55%</span></div>
+      <div class="tkr-it"><span class="s">FT</span><span class="t">BOJ ends negative rates</span><span class="v c">22%</span></div>
+      <div class="tkr-it"><span class="s">DEFENSE</span><span class="t">LMT $4.2B THAAD</span><span class="v m">48%</span></div>
+      <div class="tkr-it"><span class="s">S&P</span><span class="t">OPEC+ extends cuts</span><span class="v c">31%</span></div>
+      <div class="tkr-it"><span class="s">REUTERS</span><span class="t">Red Sea shipping halted</span><span class="v h">92%</span></div>
+      <div class="tkr-it"><span class="s">BLOOMBERG</span><span class="t">Fed signals pause</span><span class="v h">78%</span></div>
+      <div class="tkr-it"><span class="s">ARSTECHNICA</span><span class="t">Nvidia Blackwell</span><span class="v m">55%</span></div>
+      <div class="tkr-it"><span class="s">FT</span><span class="t">BOJ ends negative rates</span><span class="v c">22%</span></div>
+      <div class="tkr-it"><span class="s">DEFENSE</span><span class="t">LMT $4.2B THAAD</span><span class="v m">48%</span></div>
+      <div class="tkr-it"><span class="s">S&P</span><span class="t">OPEC+ extends cuts</span><span class="v c">31%</span></div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

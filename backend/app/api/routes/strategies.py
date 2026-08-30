@@ -5,45 +5,65 @@ GET  /api/v1/strategies/         — list all active strategies
 POST /api/v1/strategies/refresh  — trigger immediate strategy regeneration
 """
 
+from datetime import datetime, timezone
 from typing import Annotated
 
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
+from app.core.database import get_db, AsyncSessionLocal
 from app.models.strategy import MarketStrategy
+from app.models.user import User
 
 from app.core.security import get_current_user
 router = APIRouter(dependencies=[Depends(get_current_user)])
+public_router = APIRouter()
+
+
+async def require_admin(user: User = Depends(get_current_user)) -> User:
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
 
 
 @router.get("/")
 async def list_strategies(db: Annotated[AsyncSession, Depends(get_db)]):
-    """Return all active market strategies, sorted by confidence descending."""
+    """Return all active, non-expired market strategies, sorted by confidence descending."""
+    now = datetime.now(timezone.utc)
     result = await db.execute(
         select(MarketStrategy)
         .where(MarketStrategy.is_active == True)
+        .where(sa.or_(
+            MarketStrategy.expires_at.is_(None),
+            MarketStrategy.expires_at >= now,
+        ))
         .order_by(MarketStrategy.confidence.desc())
     )
     return [_serialize(s) for s in result.scalars().all()]
 
 
 @router.post("/refresh")
-async def refresh_strategies(db: Annotated[AsyncSession, Depends(get_db)]):
-    """Manually trigger strategy regeneration from current cluster data."""
+async def refresh_strategies(
+    background_tasks: BackgroundTasks,
+    admin: Annotated[User, Depends(require_admin)],
+):
+    """Manually trigger strategy regeneration from current cluster data (admin only)."""
     from app.intelligence.strategy_engine import generate_strategies
-    strategies = await generate_strategies(db)
-    return {"generated": len(strategies), "ok": True}
+    async def _run():
+        async with AsyncSessionLocal() as db:
+            await generate_strategies(db)
+    background_tasks.add_task(_run)
+    return {"generated": None, "ok": True, "status": "started"}
 
 
-@router.get("/methodology")
+@public_router.get("/methodology")
 async def methodology():
     """Explains signal generation pipeline for due diligence (no auth required)."""
     return {
         "version": "1.0",
-        "last_updated": "2026-03-19",
+        "last_updated": "2026-08-28",
         "signal_generation": {
             "data_sources": [
                 "RSS feeds — Reuters, BBC, Al Jazeera, Bloomberg, WSJ, FT",
@@ -57,24 +77,21 @@ async def methodology():
                 "3. HDBSCAN clustering groups articles by semantic similarity",
                 "4. Volatility scored 0-1: member count × recency × source diversity",
                 "5. Google Gemini 1.5 Flash generates thesis, rationale, asset mapping",
-                "6. Signals expire after 4 h; only active signals surfaced",
+                "6. Strategies expire after 6 h; signals expire after 48 h",
             ],
             "confidence_scoring": {
-                "formula": "cluster_volatility × source_diversity_multiplier × recency_weight",
+                "formula": "LLM-generated confidence (0-1), influenced by cluster volatility and source diversity",
                 "source_diversity": "Penalises single-source clusters; min 2 sources for confidence > 0.5",
                 "recency_weight": "Exponential decay with 6-hour half-life",
             },
             "limitations": [
-                "NOT FINANCIAL ADVICE — for research and situational awareness only",
                 "No backtesting against historical price data has been performed",
                 "Signals are LLM-generated and may contain inaccuracies",
                 "Typical latency from real-world event to signal: 5-20 minutes",
                 "Coverage is English-language sources only",
             ],
             "legal": (
-                "Provided for informational purposes only. "
-                "WorldState is not a registered investment adviser. "
-                "Nothing herein constitutes investment advice under the Investment Advisers Act of 1940."
+                "Provided for informational purposes only."
             ),
         },
     }
@@ -93,19 +110,21 @@ async def strategy_performance(db: Annotated[AsyncSession, Depends(get_db)]):
             func.count(MarketStrategy.outcome_4h).label("with_4h"),
             func.count(MarketStrategy.outcome_24h).label("with_24h"),
             func.sum(
-                case((
+                case(
                     (MarketStrategy.direction == 'LONG',  MarketStrategy.outcome_4h > 0),
                     (MarketStrategy.direction == 'SHORT', MarketStrategy.outcome_4h < 0),
-                ), else_=False).cast(sa.Integer)
+                    else_=False,
+                ).cast(sa.Integer)
             ).label("hits_4h"),
             func.sum(
-                case((
+                case(
                     (MarketStrategy.direction == 'LONG',  MarketStrategy.outcome_24h > 0),
                     (MarketStrategy.direction == 'SHORT', MarketStrategy.outcome_24h < 0),
-                ), else_=False).cast(sa.Integer)
+                    else_=False,
+                ).cast(sa.Integer)
             ).label("hits_24h"),
         )
-        .where(MarketStrategy.entry_ticker != None)
+        .where(MarketStrategy.entry_ticker.isnot(None))
         .group_by(MarketStrategy.direction)
     )
     rows = result.fetchall()

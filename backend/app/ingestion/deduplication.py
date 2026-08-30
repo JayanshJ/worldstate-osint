@@ -57,13 +57,16 @@ async def is_hash_duplicate(db: AsyncSession, content_hash: str) -> bool:
 async def find_semantic_duplicate(
     db: AsyncSession,
     embedding: list[float],
-    within_hours: int = 24,
+    within_hours: int | None = None,
 ) -> uuid.UUID | None:
     """
     Return the article_id of a near-duplicate if cosine similarity
     exceeds the threshold, else None.
-    Only checks articles ingested within the last `within_hours`.
+    Only checks articles ingested within the last `within_hours`
+    (defaults to settings.dedup_similarity_window_hours).
     """
+    if within_hours is None:
+        within_hours = settings.dedup_similarity_window_hours
     since = datetime.now(timezone.utc) - timedelta(hours=within_hours)
     threshold = settings.dedup_similarity_threshold
 

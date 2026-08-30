@@ -23,11 +23,27 @@ from app.ingestion.deduplication import check_duplicate, compute_content_hash
 from app.ingestion.sources import RSS_SOURCES, Source
 from app.models.article import RawArticle
 
+from collections import OrderedDict
+
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
-# Track last-seen entry GUIDs per source to avoid re-processing
-_seen_guids: dict[str, set[str]] = {}
+# Bounded LRU cache per source — caps at 2000 entries each to prevent
+# unbounded memory growth over long-running sessions.
+_SEEN_MAX = 2000
+_seen_guids: dict[str, OrderedDict[str, None]] = {}
+
+
+def _mark_seen(source_id: str, guid: str) -> bool:
+    """Returns True if newly seen (not a dup)."""
+    cache = _seen_guids.setdefault(source_id, OrderedDict())
+    if guid in cache:
+        return False
+    cache[guid] = None
+    cache.move_to_end(guid, last=False)
+    while len(cache) > _SEEN_MAX:
+        cache.popitem(last=True)
+    return True
 
 
 def _parse_date(entry: feedparser.FeedParserDict) -> datetime | None:
@@ -69,14 +85,12 @@ async def fetch_feed(source: Source, client: httpx.AsyncClient) -> list[dict]:
         return []
 
     feed = feedparser.parse(resp.text)
-    seen = _seen_guids.setdefault(source.id, set())
     items = []
 
     for entry in feed.entries:
         guid = getattr(entry, "id", None) or getattr(entry, "link", "")
-        if not guid or guid in seen:
+        if not guid or not _mark_seen(source.id, guid):
             continue
-        seen.add(guid)
 
         title = getattr(entry, "title", "").strip()
         if not title:
@@ -121,11 +135,13 @@ async def persist_articles(items: list[dict]) -> list[str]:
             )
             db.add(article)
             try:
-                await db.flush()
+                # Use a savepoint so a single failure doesn't roll back
+                # the entire batch of prior successful inserts.
+                async with db.begin_nested():
+                    await db.flush()
                 new_ids.append(str(article.id))
                 logger.info("Ingested: [%s] %s", item["source_id"], item["title"][:80])
             except Exception as e:
-                await db.rollback()
                 logger.debug("Persist error (likely race condition dup): %s", e)
 
         await db.commit()

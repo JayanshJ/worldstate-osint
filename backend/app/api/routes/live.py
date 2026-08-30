@@ -46,7 +46,7 @@ MILITARY_PREFIXES = {
     # China
     "CCA",  # PLAAF
     # Others
-    "RNAF", "DAF", "BAF", "NATO", "USAF",
+    "RNAF", "DAF", "BAF", "USAF",
 }
 
 # ─── Tight conflict zones only (not broad regions) ───────────────────────────
@@ -169,6 +169,8 @@ MARITIME_ZONES = [
         "query": "Strait Hormuz Iran oil tanker",
         "significance": "~20% of global oil supply transits here daily",
         "threat": "HIGH",
+        "commodities": ["Brent Crude (UKOIL)", "WTI Crude (CL=F)", "Natural Gas (NG=F)", "LNG"],
+        "affected_sectors": ["Energy", "Shipping", "Insurance"],
     },
     {
         "id": "bab",
@@ -177,6 +179,8 @@ MARITIME_ZONES = [
         "query": "Red Sea Houthi Yemen shipping attack",
         "significance": "Red Sea access for Suez route — active Houthi anti-ship threat",
         "threat": "CRITICAL",
+        "commodities": ["Shipping Rates", "Crude Oil (CL=F)", "Container Shipping"],
+        "affected_sectors": ["Shipping", "Logistics", "Retail", "Manufacturing"],
     },
     {
         "id": "malacca",
@@ -185,6 +189,8 @@ MARITIME_ZONES = [
         "query": "Malacca Strait China shipping piracy",
         "significance": "~80% of China's oil imports transit here",
         "threat": "MODERATE",
+        "commodities": ["Crude Oil (CL=F)", "LNG", "Palm Oil"],
+        "affected_sectors": ["Shipping", "Energy", "Asian Supply Chains"],
     },
     {
         "id": "taiwan",
@@ -193,6 +199,8 @@ MARITIME_ZONES = [
         "query": "Taiwan Strait China military PLA",
         "significance": "Half of global container ships pass annually; active PLA naval activity",
         "threat": "HIGH",
+        "commodities": ["Semiconductors (SMH)", "TSMC (TSM)", "Container Shipping"],
+        "affected_sectors": ["Technology", "Semiconductors", "Shipping", "Electronics"],
     },
     {
         "id": "suez",
@@ -201,6 +209,8 @@ MARITIME_ZONES = [
         "query": "Suez Canal Egypt shipping blockage",
         "significance": "12% of global trade — primary European↔Asia route",
         "threat": "MODERATE",
+        "commodities": ["Shipping Rates", "Crude Oil (CL=F)", "Container Shipping"],
+        "affected_sectors": ["Shipping", "Logistics", "European Retail"],
     },
     {
         "id": "black_sea",
@@ -209,6 +219,8 @@ MARITIME_ZONES = [
         "query": "Black Sea Ukraine Russia grain fleet",
         "significance": "Ukraine grain exports and Russian naval activity",
         "threat": "HIGH",
+        "commodities": ["Wheat (ZW=F)", "Corn (ZC=F)", "Sunflower Oil", "Crude Oil (CL=F)"],
+        "affected_sectors": ["Agriculture", "Food", "Energy"],
     },
     {
         "id": "baltic",
@@ -217,6 +229,8 @@ MARITIME_ZONES = [
         "query": "Baltic Sea pipeline NATO Russia sabotage",
         "significance": "Critical pipeline infrastructure; recent sabotage incidents",
         "threat": "ELEVATED",
+        "commodities": ["Natural Gas (NG=F)", "LNG"],
+        "affected_sectors": ["Energy", "European Industry", "Petrochemicals"],
     },
     {
         "id": "south_china_sea",
@@ -225,6 +239,8 @@ MARITIME_ZONES = [
         "query": "South China Sea Philippines dispute island",
         "significance": "~$5T annual trade; active territorial dispute with US/Philippines",
         "threat": "HIGH",
+        "commodities": ["Crude Oil (CL=F)", "LNG", "Container Shipping", "Semiconductors"],
+        "affected_sectors": ["Shipping", "Energy", "Technology", "Defense"],
     },
     {
         "id": "persian_gulf",
@@ -233,6 +249,8 @@ MARITIME_ZONES = [
         "query": "Persian Gulf Iran sanctions tanker seizure",
         "significance": "Iran tanker seizures and drone attacks on oil infrastructure",
         "threat": "HIGH",
+        "commodities": ["Brent Crude (UKOIL)", "WTI Crude (CL=F)", "LNG"],
+        "affected_sectors": ["Energy", "Shipping", "Insurance", "Defense"],
     },
     {
         "id": "gibraltar",
@@ -241,6 +259,8 @@ MARITIME_ZONES = [
         "query": "Gibraltar Mediterranean shipping",
         "significance": "Gateway between Atlantic and Mediterranean — NATO western choke point",
         "threat": "LOW",
+        "commodities": ["Shipping Rates", "Container Shipping"],
+        "affected_sectors": ["Shipping", "Mediterranean Trade"],
     },
     {
         "id": "cape",
@@ -249,6 +269,8 @@ MARITIME_ZONES = [
         "query": "Cape Good Hope shipping route Red Sea diversion",
         "significance": "Alternative Suez bypass — traffic surged after Red Sea crisis",
         "threat": "LOW",
+        "commodities": ["Shipping Rates", "Crude Oil (CL=F)", "Container Shipping"],
+        "affected_sectors": ["Shipping", "Logistics", "African Trade"],
     },
     {
         "id": "panama",
@@ -257,6 +279,8 @@ MARITIME_ZONES = [
         "query": "Panama Canal drought water level restrictions",
         "significance": "Pacific↔Atlantic link — drought-related transit restrictions ongoing",
         "threat": "MODERATE",
+        "commodities": ["Shipping Rates", "LNG", "Grain (ZC=F)"],
+        "affected_sectors": ["Shipping", "Energy", "Agriculture", "US-Asia Trade"],
     },
 ]
 

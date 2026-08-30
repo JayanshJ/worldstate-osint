@@ -56,10 +56,23 @@ ASSET CLASSES & SPECIFIC INSTRUMENTS:
              Uranium (URA), Rare Earths (REMX), Copper (HG=F), Palladium (PA=F)
 - EQUITY:    Defense — RTX, LMT, NOC, BA, HII, L3H
              Energy majors — XOM, CVX, BP, SHEL, TTE
+             Tech — AAPL, MSFT, NVDA, GOOGL, META, AMZN, TSLA, AMD, INTC
+             Finance — JPM, BAC, GS, MS, WFC
              Country ETFs — EWZ (Brazil), EWT (Taiwan), EWY (Korea), EWJ (Japan), FXI (China),
-                            EWQ (France), EWG (Germany), RSX equivalent
+                            EWQ (France), EWG (Germany), EWU (UK), EWZ (India), EEM (EM)
              Sector ETFs — XLE (energy), XLF (financials), IHI (defense), BOTZ (AI/robotics),
-                           XBI (biotech), GDX (gold miners), VanEck Oil Services (OIH)
+                           XBI (biotech), GDX (gold miners), OIH (oil services),
+                           XLK (tech), XLV (healthcare), XLI (industrials), XLY (consumer),
+                           XLP (staples), XLU (utilities), XLRE (real estate), XLC (comms),
+                           SMH (semiconductors), KWEB (China internet), ARKK (innovation),
+                           SOXX (semis), ITB (homebuilders), XHB (housing),
+                           IBB (biotech), VNQ (REITs), KBE (banks), KIE (insurance)
+             Thematic ETFs — ICLN (clean energy), LIT (lithium), URNM (uranium),
+                            BLOK (blockchain), FINX (fintech), AIQ (AI theme),
+                            ROBO (robotics), HAIL (cybersecurity), CIBR (cybersec),
+                            ESGU (ESG), VIX (volatility), VXX (vol futures)
+             Broad ETFs — SPY (S&P 500), QQQ (Nasdaq 100), IWM (Russell 2000),
+                          DIA (Dow), VTI (total market), EFA (developed mkts)
 - FOREX:     Safe havens — USD (DXY), JPY, CHF
              European — EUR/USD, GBP/USD
              EM at risk — USD/TRY, USD/INR, USD/BRL, USD/MXN, USD/ZAR, USD/NGN, USD/EGP
@@ -135,7 +148,7 @@ Generate 8 to 12 strategies. You MUST cover ALL of the following asset classes �
   • CRYPTO: BTC and ETH directional view. Geopolitical risk drives capital flight to BTC. Sanctions/USD strength pressures or pumps BTC. Always derive a crypto view.
   • BONDS: US Treasury direction (TLT long / SHY short). Any inflation, recession, or rate expectation story has a bond angle. Credit spread outlook (HYG/LQD).
   • COMMODITY: Oil (Brent/WTI), Gold, or agricultural commodity (Wheat/Corn).
-  • EQUITY: At least one sector ETF (XLE, IHI, XLF) or country ETF play.
+  • EQUITY: At least one sector ETF (XLE, IHI, XLF, SMH), one country ETF play (EWZ, EWJ, FXI), or individual stock (NVDA, AAPL, RTX). Any NYSE or NASDAQ listed stock or ETF is valid — use the actual ticker.
   • VOLATILITY: VIX outlook, MOVE index, or specific options strategy.
 
 Prioritize highest-volatility, highest-conviction opportunities first.
@@ -220,7 +233,7 @@ async def _generate_with_gemini(clusters: list[EventCluster]) -> list[dict]:
         model_name=settings.gemini_model,
         system_instruction=STRATEGY_SYSTEM_PROMPT,
         generation_config=genai.GenerationConfig(
-            temperature=0.25,
+            temperature=1,
             max_output_tokens=4096,
             response_mime_type="application/json",
         ),
@@ -239,8 +252,8 @@ async def _generate_with_openai(clusters: list[EventCluster]) -> list[dict]:
             {"role": "system", "content": STRATEGY_SYSTEM_PROMPT},
             {"role": "user",   "content": _build_prompt(clusters)},
         ],
-        temperature=0.25,
-        max_tokens=4096,
+        temperature=1,
+        max_completion_tokens=4096,
         response_format={"type": "json_object"},
     )
     return _parse_response(response.choices[0].message.content)
@@ -250,13 +263,53 @@ async def _generate_with_openai(clusters: list[EventCluster]) -> list[dict]:
 
 # Map common asset identifiers to yfinance tickers
 _TICKER_MAP: dict[str, str] = {
+    # Commodities
     "XAU/USD": "GC=F",   "XAG/USD": "SI=F",   "XPT/USD": "PL=F",
     "UKOIL":   "BZ=F",   "CL=F":    "CL=F",   "NG=F":    "NG=F",
     "ZW=F":    "ZW=F",   "ZC=F":    "ZC=F",   "ZS=F":    "ZS=F",
+    "HG=F":    "HG=F",   "PA=F":    "PA=F",
+    # Crypto
     "BTC/USD": "BTC-USD","ETH/USD":  "ETH-USD",
+    # Forex
     "EUR/USD": "EURUSD=X","GBP/USD": "GBPUSD=X","USD/JPY": "JPY=X",
     "USD/CHF": "CHF=X",  "USD/TRY": "TRY=X",  "USD/BRL": "BRL=X",
     "USD/INR": "INR=X",  "USD/MXN": "MXN=X",  "DXY":     "DX-Y.NYB",
+    "USD/ZAR": "ZAR=X",  "USD/NGN": "NGN=X",  "USD/EGP": "EGP=X",
+    # Broad ETFs
+    "SPY":  "SPY",  "QQQ":  "QQQ",  "IWM":  "IWM",  "DIA":  "DIA",
+    "VTI":  "VTI",  "EFA":  "EFA",  "EEM":  "EEM",
+    # Sector ETFs
+    "XLE": "XLE",  "XLF": "XLF",  "IHI": "IHI",  "BOTZ": "BOTZ",
+    "XBI": "XBI",  "GDX": "GDX",  "OIH": "OIH",  "XLK": "XLK",
+    "XLV": "XLV",  "XLI": "XLI",  "XLY": "XLY",  "XLP": "XLP",
+    "XLU": "XLU",  "XLRE": "XLRE","XLC": "XLC",  "SMH": "SMH",
+    "KWEB": "KWEB","ARKK": "ARKK","SOXX": "SOXX","ITB": "ITB",
+    "XHB": "XHB",  "IBB": "IBB",  "VNQ": "VNQ",  "KBE": "KBE",
+    "KIE": "KIE",  "BLOK": "BLOK","FINX": "FINX","AIQ": "AIQ",
+    "ROBO": "ROBO","HAIL": "HAIL","CIBR": "CIBR","ESGU": "ESGU",
+    "ICLN": "ICLN","LIT": "LIT",  "URNM": "URNM","URA": "URA",
+    "REMX": "REMX",
+    # Country ETFs
+    "EWZ": "EWZ",  "EWT": "EWT",  "EWY": "EWY",  "EWJ": "EWJ",
+    "FXI": "FXI",  "EWQ": "EWQ",  "EWG": "EWG",  "EWU": "EWU",
+    "INDA": "INDA","RSX": "RSX",
+    # Bonds
+    "TLT": "TLT",  "SHY": "SHY",  "IEF": "IEF",  "EMB": "EMB",
+    "HYG": "HYG",  "LQD": "LQD",  "BUND": "BUND",
+    # Volatility
+    "VIX": "^VIX", "VXX": "VXX",  "UVXY": "UVXY","MOVE": "^MOVE",
+    "OVX": "^OVX",
+    # Individual stocks (common ones for price tracking)
+    "RTX": "RTX",  "LMT": "LMT",  "NOC": "NOC",  "BA":  "BA",
+    "HII": "HII",  "L3H": "LHX",
+    "XOM": "XOM",  "CVX": "CVX",  "BP":  "BP",   "SHEL": "SHEL",
+    "TTE": "TTE",
+    "AAPL": "AAPL","MSFT": "MSFT","NVDA": "NVDA","GOOGL": "GOOGL",
+    "META": "META","AMZN": "AMZN","TSLA": "TSLA","AMD":  "AMD",
+    "INTC": "INTC","JPM": "JPM",  "BAC": "BAC",  "GS":   "GS",
+    "MS":  "MS",   "WFC": "WFC",
+    "ASML": "ASML","TSM": "TSM",  "AMAT": "AMAT","KLAC": "KLAC",
+    "PFE": "PFE",  "MRNA": "MRNA",
 }
 
 def _extract_ticker(specific_assets: list) -> Optional[str]:
@@ -345,106 +398,128 @@ async def generate_strategies(db: AsyncSession) -> list[MarketStrategy]:
     Core entry point. Fetches top clusters, calls AI, persists strategies,
     and broadcasts via Redis. Returns list of newly created strategies.
     """
-    # Fetch top 25 active, summarised clusters ranked by volatility × credibility
-    # Low threshold (0.05) ensures tech/crypto/finance clusters are not excluded
-    result = await db.execute(
-        select(EventCluster)
-        .where(
-            EventCluster.is_active == True,
-            EventCluster.label != None,
-            EventCluster.volatility >= 0.05,
+    # Distributed lock via Redis SET NX prevents concurrent runs across
+    # workers (cluster_worker vs API /refresh).
+    from app.core.redis_client import get_redis
+    lock_key = "lock:strategy_generation"
+    try:
+        r = get_redis()
+        acquired = await r.set(lock_key, "1", ex=300, nx=True)
+        if not acquired:
+            logger.info("Strategy generation already running — skipping")
+            return []
+    except Exception:
+        # If Redis is down, proceed without the lock (best-effort)
+        pass
+
+    try:
+        # Fetch top 25 active, summarised clusters ranked by volatility × credibility
+        # Low threshold (0.05) ensures tech/crypto/finance clusters are not excluded
+        result = await db.execute(
+            select(EventCluster)
+            .where(
+                EventCluster.is_active == True,
+                EventCluster.label != None,
+                EventCluster.volatility >= 0.05,
+            )
+            .order_by(
+                (EventCluster.volatility * EventCluster.weighted_score).desc()
+            )
+            .limit(25)
         )
-        .order_by(
-            (EventCluster.volatility * EventCluster.weighted_score).desc()
-        )
-        .limit(25)
-    )
-    clusters = result.scalars().all()
+        clusters = result.scalars().all()
 
-    if len(clusters) < 2:
-        logger.info(
-            "Not enough active summarised clusters (%d) for strategy generation", len(clusters)
-        )
-        return []
-
-    logger.info("Generating strategies from %d clusters", len(clusters))
-
-    # ── Call AI ──────────────────────────────────────────────────────────────
-    raw_strategies: list[dict] = []
-
-    if settings.google_api_key:
-        try:
-            raw_strategies = await _generate_with_gemini(clusters)
-            logger.info("Strategy brief generated via Gemini Flash (%d strategies)", len(raw_strategies))
-        except Exception as e:
-            logger.warning("Gemini strategy generation failed: %s — falling back to OpenAI", e)
-
-    if not raw_strategies:
-        try:
-            raw_strategies = await _generate_with_openai(clusters)
-            logger.info("Strategy brief generated via GPT-4o-mini (%d strategies)", len(raw_strategies))
-        except Exception as e:
-            logger.error("OpenAI strategy generation also failed: %s", e)
+        if len(clusters) < 2:
+            logger.info(
+                "Not enough active summarised clusters (%d) for strategy generation", len(clusters)
+            )
             return []
 
-    if not raw_strategies:
-        return []
+        logger.info("Generating strategies from %d clusters", len(clusters))
 
-    # ── Build helpers ─────────────────────────────────────────────────────────
-    label_to_cluster = {c.label: c for c in clusters if c.label}
-    avg_vol  = sum(c.volatility for c in clusters) / len(clusters)
-    avg_sent = sum(c.sentiment  for c in clusters) / len(clusters)
-    expires_at = datetime.now(timezone.utc) + timedelta(hours=6)
+        # ── Call AI ──────────────────────────────────────────────────────────────
+        raw_strategies: list[dict] = []
 
-    # ── Deactivate old strategies ─────────────────────────────────────────────
-    await db.execute(update(MarketStrategy).values(is_active=False))
+        if settings.google_api_key:
+            try:
+                raw_strategies = await _generate_with_gemini(clusters)
+                logger.info("Strategy brief generated via Gemini Flash (%d strategies)", len(raw_strategies))
+            except Exception as e:
+                logger.warning("Gemini strategy generation failed: %s — falling back to OpenAI", e)
 
-    # ── Persist new strategies ────────────────────────────────────────────────
-    new_strategies: list[MarketStrategy] = []
-    for raw in raw_strategies[:10]:   # hard cap at 10
+        if not raw_strategies:
+            try:
+                raw_strategies = await _generate_with_openai(clusters)
+                logger.info("Strategy brief generated via GPT-4o-mini (%d strategies)", len(raw_strategies))
+            except Exception as e:
+                logger.error("OpenAI strategy generation also failed: %s", e)
+                return []
+
+        if not raw_strategies:
+            return []
+
+        # ── Build helpers ─────────────────────────────────────────────────────────
+        label_to_cluster = {c.label: c for c in clusters if c.label}
+        avg_vol  = sum(c.volatility for c in clusters) / len(clusters)
+        avg_sent = sum(c.sentiment  for c in clusters) / len(clusters)
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=6)
+
+        # ── Deactivate old strategies ─────────────────────────────────────────────
+        await db.execute(update(MarketStrategy).values(is_active=False))
+
+        # ── Persist new strategies ────────────────────────────────────────────────
+        new_strategies: list[MarketStrategy] = []
+        for raw in raw_strategies[:10]:   # hard cap at 10
+            try:
+                source_labels   = raw.get("source_cluster_labels", [])
+                source_clusters = [label_to_cluster[lbl] for lbl in source_labels if lbl in label_to_cluster]
+                source_ids      = [str(c.id) for c in source_clusters]
+
+                vol_ctx  = (sum(c.volatility for c in source_clusters) / len(source_clusters)) if source_clusters else avg_vol
+                sent_ctx = (sum(c.sentiment  for c in source_clusters) / len(source_clusters)) if source_clusters else avg_sent
+
+                specific_assets = raw.get("specific_assets", [])[:6]
+                entry_ticker = _extract_ticker(specific_assets)
+                entry_price  = await _fetch_price(entry_ticker) if entry_ticker else None
+
+                strategy = MarketStrategy(
+                    title=str(raw.get("title", ""))[:200],
+                    thesis=str(raw.get("thesis", "")),
+                    rationale=raw.get("rationale", [])[:3],
+                    asset_class=str(raw.get("asset_class", "COMMODITY"))[:50],
+                    specific_assets=specific_assets,
+                    direction=str(raw.get("direction", "NEUTRAL"))[:20],
+                    timeframe=str(raw.get("timeframe", "SHORT"))[:20],
+                    risk_level=str(raw.get("risk_level", "MODERATE"))[:20],
+                    confidence=max(0.0, min(1.0, float(raw.get("confidence", 0.5)))),
+                    volatility_context=round(vol_ctx, 4),
+                    sentiment_context=round(sent_ctx, 4),
+                    source_cluster_ids=source_ids,
+                    related_regions=raw.get("related_regions", [])[:8],
+                    expires_at=expires_at,
+                    entry_ticker=entry_ticker,
+                    entry_price=entry_price,
+                )
+                db.add(strategy)
+                new_strategies.append(strategy)
+            except Exception as e:
+                logger.warning("Skipped malformed strategy: %s — %s", raw.get("title", "?"), e)
+
+        await db.commit()
+        logger.info("Persisted %d market strategies", len(new_strategies))
+
+        # ── Broadcast to frontend ─────────────────────────────────────────────────
+        payload = [_serialize(s) for s in new_strategies]
+        await publish_event(CHANNEL_STRATEGY_UPDATE, {"strategies": payload})
+
+        return new_strategies
+    finally:
+        # Release the lock
         try:
-            source_labels   = raw.get("source_cluster_labels", [])
-            source_clusters = [label_to_cluster[lbl] for lbl in source_labels if lbl in label_to_cluster]
-            source_ids      = [str(c.id) for c in source_clusters]
-
-            vol_ctx  = (sum(c.volatility for c in source_clusters) / len(source_clusters)) if source_clusters else avg_vol
-            sent_ctx = (sum(c.sentiment  for c in source_clusters) / len(source_clusters)) if source_clusters else avg_sent
-
-            specific_assets = raw.get("specific_assets", [])[:6]
-            entry_ticker = _extract_ticker(specific_assets)
-            entry_price  = await _fetch_price(entry_ticker) if entry_ticker else None
-
-            strategy = MarketStrategy(
-                title=str(raw.get("title", ""))[:200],
-                thesis=str(raw.get("thesis", "")),
-                rationale=raw.get("rationale", [])[:3],
-                asset_class=str(raw.get("asset_class", "COMMODITY"))[:50],
-                specific_assets=specific_assets,
-                direction=str(raw.get("direction", "NEUTRAL"))[:20],
-                timeframe=str(raw.get("timeframe", "SHORT"))[:20],
-                risk_level=str(raw.get("risk_level", "MODERATE"))[:20],
-                confidence=max(0.0, min(1.0, float(raw.get("confidence", 0.5)))),
-                volatility_context=round(vol_ctx, 4),
-                sentiment_context=round(sent_ctx, 4),
-                source_cluster_ids=source_ids,
-                related_regions=raw.get("related_regions", [])[:8],
-                expires_at=expires_at,
-                entry_ticker=entry_ticker,
-                entry_price=entry_price,
-            )
-            db.add(strategy)
-            new_strategies.append(strategy)
-        except Exception as e:
-            logger.warning("Skipped malformed strategy: %s — %s", raw.get("title", "?"), e)
-
-    await db.commit()
-    logger.info("Persisted %d market strategies", len(new_strategies))
-
-    # ── Broadcast to frontend ─────────────────────────────────────────────────
-    payload = [_serialize(s) for s in new_strategies]
-    await publish_event(CHANNEL_STRATEGY_UPDATE, {"strategies": payload})
-
-    return new_strategies
+            r = get_redis()
+            await r.delete(lock_key)
+        except Exception:
+            pass
 
 
 def _serialize(s: MarketStrategy) -> dict:

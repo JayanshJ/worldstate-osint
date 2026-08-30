@@ -5,17 +5,19 @@ import { useAlerts } from '@/hooks/useAlerts'
 import type { AlertWatchCreate, AlertWatch } from '@/lib/api'
 import { VolatilityBadge } from '@/components/ui/VolatilityBadge'
 import { cn, timeAgo } from '@/lib/utils'
+import type { AlertNotification } from '@/hooks/useAlerts'
 
 interface Props {
   onClose:          () => void
   onClusterSelect?: (id: string) => void
+  alerts:           ReturnType<typeof useAlerts>
 }
 
-export function AlertPanel({ onClose, onClusterSelect }: Props) {
+export function AlertPanel({ onClose, onClusterSelect, alerts }: Props) {
   const {
     watches, loading, notifications, unreadCount,
     createWatch, toggleWatch, deleteWatch, markAllRead,
-  } = useAlerts()
+  } = alerts
 
   const [tab, setTab]             = useState<'watches' | 'notifications'>('notifications')
   const [showCreate, setShowCreate] = useState(false)
@@ -121,7 +123,7 @@ function NotificationsTab({
   notifications,
   onClusterSelect,
 }: {
-  notifications: ReturnType<typeof useAlerts>['notifications']
+  notifications: AlertNotification[]
   onClusterSelect: (id: string) => void
 }) {
   if (!notifications.length) {

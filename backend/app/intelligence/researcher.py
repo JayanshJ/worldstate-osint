@@ -76,7 +76,7 @@ async def _research_with_gemini(entity_name: str, context: str) -> Dict[str, Any
         system_instruction=SYSTEM_PROMPT,
         tools="google_search_retrieval",
         generation_config=genai.GenerationConfig(
-            temperature=0.2, 
+            temperature=1, 
             response_mime_type="application/json",
         ),
     )
@@ -98,7 +98,7 @@ async def _research_with_openai(entity_name: str, context: str) -> Dict[str, Any
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user",   "content": user_prompt},
         ],
-        temperature=0.1,
+        temperature=1,
         response_format={"type": "json_object"},
     )
     return _parse_response(response.choices[0].message.content)

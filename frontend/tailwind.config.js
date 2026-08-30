@@ -5,9 +5,9 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        mono:  ['JetBrains Mono', 'Fira Code', 'Consolas', 'monospace'],
-        sans:  ['Inter', 'system-ui', 'sans-serif'],
-        serif: ['Instrument Serif', 'Georgia', 'serif'],   // Direction A headlines
+        mono:  ['Geist Mono', 'JetBrains Mono', 'Fira Code', 'Consolas', 'monospace'],
+        sans:  ['Geist', 'Inter', 'system-ui', 'sans-serif'],
+        serif: ['Geist', 'Georgia', 'serif'],
       },
       colors: {
         // Terminal palette — theme-aware via CSS variables
@@ -43,6 +43,7 @@ export default {
         'fade-in':      'fade-in 0.2s ease-out',
         'blink':        'blink 1s step-end infinite',
         'pulse-dot':    'pulse-dot 1.6s ease-in-out infinite',
+        'scan':         'scan 2s ease-in-out infinite',
       },
       keyframes: {
         ticker: {
@@ -68,6 +69,10 @@ export default {
         'blink': {
           '0%, 100%': { opacity: '1' },
           '50%':      { opacity: '0' },
+        },
+        scan: {
+          '0%, 100%': { transform: 'translateY(0)', opacity: '0.3' },
+          '50%':      { transform: 'translateY(100%)', opacity: '0.8' },
         },
       },
       boxShadow: {

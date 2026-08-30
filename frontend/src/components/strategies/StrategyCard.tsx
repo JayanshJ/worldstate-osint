@@ -1,4 +1,4 @@
-import { TrendingUp, TrendingDown, Shield, Minus, Clock, AlertTriangle, CheckCircle2, MapPin, FlaskConical } from 'lucide-react'
+import { TrendingUp, TrendingDown, Shield, Minus, Clock, CheckCircle2, MapPin, FlaskConical, AlertTriangle } from 'lucide-react'
 import type {
   MarketStrategy,
   AssetClass,
@@ -129,14 +129,6 @@ export function StrategyCard({ strategy, onClusterSelect }: Props) {
       className="border border-terminal-border bg-terminal-surface/40 hover:bg-terminal-surface/70 transition-colors"
       style={{ borderLeftColor: dirColor, borderLeftWidth: 3 }}
     >
-      {/* ── Research-only banner ────────────────────────────────────────── */}
-      <div className="flex items-center gap-1.5 px-4 py-1 bg-amber-500/10 border-b border-amber-500/20">
-        <AlertTriangle size={9} className="text-amber-400 flex-shrink-0" />
-        <span className="font-mono text-[9px] text-amber-400/80 tracking-wider">
-          RESEARCH ONLY — NOT FINANCIAL ADVICE — NO BACKTEST
-        </span>
-      </div>
-
       {/* ── Header row ─────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between gap-3 px-4 pt-3 pb-2">
         <div className="flex items-center gap-2 flex-wrap">

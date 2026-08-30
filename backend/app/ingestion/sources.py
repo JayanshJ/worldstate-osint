@@ -68,10 +68,68 @@ RSS_SOURCES: list[Source] = [
     # Africa
     Source("allafrica",       "AllAfrica",           SourceType.RSS, 0.65, "https://allafrica.com/tools/headlines/rdf/latest/headlines.rdf"),
     Source("mail_guardian",   "Mail & Guardian",     SourceType.RSS, 0.72, "https://mg.co.za/feed/"),
+    Source("bbc_africa",       "BBC Africa",          SourceType.RSS, 0.85, "https://feeds.bbci.co.uk/news/world/africa/rss.xml"),
+    Source("quartz_africa",    "Quartz Africa",       SourceType.RSS, 0.75, "https://qz.com/africa/feed/"),
 
     # Latin America
     Source("mercopress",      "MercoPress",          SourceType.RSS, 0.70, "https://en.mercopress.com/rss"),
     Source("rio_times",       "Rio Times Brazil",    SourceType.RSS, 0.65, "https://www.riotimesonline.com/feed/"),
+    Source("bbc_mundo",       "BBC Mundo",           SourceType.RSS, 0.85, "https://feeds.bbci.co.uk/spanish/news/rss.xml"),
+    Source("elpais_en",       "El País (English)",   SourceType.RSS, 0.83, "https://english.elpais.com/rss/"),
+    Source("batimes",         "Buenos Aires Times",  SourceType.RSS, 0.68, "https://www.batimes.com.ar/feed/"),
+
+    # Think Tanks & Policy Analysis
+    Source("csis",           "CSIS",                SourceType.RSS, 0.88, "https://www.csis.org/rss"),
+    Source("rand",           "RAND Corporation",    SourceType.RSS, 0.88, "https://www.rand.org/rss"),
+    Source("foreign_policy", "Foreign Policy",      SourceType.RSS, 0.85, "https://foreignpolicy.com/feed/"),
+    Source("the_diplomat",   "The Diplomat",        SourceType.RSS, 0.82, "https://thediplomat.com/feed/"),
+    Source("war_rocks",      "War on the Rocks",    SourceType.RSS, 0.80, "https://warontherocks.com/feed/"),
+    Source("lowy",           "Lowy Institute",      SourceType.RSS, 0.84, "https://www.lowyinstitute.org/rss"),
+    Source("brookings",      "Brookings",           SourceType.RSS, 0.88, "https://www.brookings.edu/feed/"),
+    Source("carnegie",       "Carnegie Endowment",  SourceType.RSS, 0.87, "https://carnegieendowment.org/rss"),
+    Source("iiss",           "IISS",                SourceType.RSS, 0.84, "https://www.iiss.org/rss"),
+
+    # Government & Central Banks
+    Source("whitehouse",     "White House",         SourceType.RSS, 0.95, "https://www.whitehouse.gov/feed/"),
+    Source("state_dept",     "US State Department", SourceType.RSS, 0.93, "https://www.state.gov/rss-feeds/"),
+    Source("us_treasury",    "US Treasury",         SourceType.RSS, 0.95, "https://home.treasury.gov/rss/press-releases"),
+    Source("ecb",            "European Central Bank",SourceType.RSS, 0.93, "https://www.ecb.europa.eu/rss/pressbox.html"),
+    Source("boe",            "Bank of England",     SourceType.RSS, 0.93, "https://www.bankofengland.co.uk/news/rss"),
+    Source("boj",            "Bank of Japan",       SourceType.RSS, 0.92, "https://www.boj.or.jp/en/rss/index.htm"),
+    Source("fomc",           "FOMC Statements",     SourceType.RSS, 0.96, "https://www.federalreserve.gov/feeds/monetary_policy.rss"),
+    Source("bls",            "Bureau of Labor Stats",SourceType.RSS, 0.94, "https://www.bls.gov/feed/"),
+    Source("bis",            "BIS",                 SourceType.RSS, 0.93, "https://www.bis.org/list/press/index.rss"),
+
+    # Defense / Military
+    Source("uk_mod",         "UK MoD",              SourceType.RSS, 0.92, "https://www.gov.uk/government/organisations/ministry-of-defence.atom"),
+    Source("dod",            "US DoD",              SourceType.RSS, 0.93, "https://www.defense.gov/rss/"),
+    Source("nato",           "NATO",                SourceType.RSS, 0.94, "https://www.nato.int/cps/en/natohq/news.rss"),
+
+    # Commodities & Energy
+    Source("oilprice",       "OilPrice.com",        SourceType.RSS, 0.75, "https://oilprice.com/rss"),
+    Source("rigzone",        "Rigzone",             SourceType.RSS, 0.76, "https://www.rigzone.com/news/rss/"),
+    Source("spglobal_energy", "S&P Global Energy",  SourceType.RSS, 0.85, "https://www.spglobal.com/commodityinsights/en/rss"),
+
+    # SEC EDGAR Filings
+    Source("sec_8k",         "SEC 8-K Filings",     SourceType.RSS, 0.97, "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=8-K&output=atom"),
+    Source("sec_13d",        "SEC 13D Filings",     SourceType.RSS, 0.95, "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=SC+13D&output=atom"),
+
+    # Newsletters / Independent Analysis
+    Source("stratechery",    "Stratechery",         SourceType.RSS, 0.82, "https://stratechery.com/feed/"),
+    Source("semafor",        "Semafor",             SourceType.RSS, 0.80, "https://www.semafor.com/feed"),
+    Source("punchbowl",      "Punchbowl News",      SourceType.RSS, 0.82, "https://punchbowl.news/feed/"),
+    Source("axios",          "Axios",               SourceType.RSS, 0.80, "https://api.axios.com/feed/"),
+
+    # Southeast Asia
+    Source("nikkei_asia",     "Nikkei Asia",         SourceType.RSS, 0.84, "https://asia.nikkei.com/rss/feed/nar"),
+    Source("straits_times",   "Straits Times",       SourceType.RSS, 0.78, "https://www.straitstimes.com/news/world/rss"),
+    Source("jakarta_post",    "Jakarta Post",        SourceType.RSS, 0.72, "https://www.thejakartapost.com/rss"),
+
+    # Europe (non-English / English editions)
+    Source("politico_eu",     "Politico Europe",     SourceType.RSS, 0.83, "https://www.politico.eu/rss/"),
+    Source("euronews",        "Euronews",            SourceType.RSS, 0.78, "https://www.euronews.com/rss"),
+    Source("lemonde_en",      "Le Monde (English)",  SourceType.RSS, 0.82, "https://www.lemonde.fr/rss/en/"),
+    Source("spiegel_intl",    "Der Spiegel (Intl)",  SourceType.RSS, 0.82, "https://www.spiegel.de/international/index.rss"),
 
     # Finance / Business / Markets
     Source("ft_world",        "Financial Times",         SourceType.RSS, 0.92, "https://www.ft.com/world?format=rss"),

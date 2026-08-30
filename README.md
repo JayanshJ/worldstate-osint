@@ -23,9 +23,9 @@ Once running:
 
 | | URL |
 |---|---|
-| **Dashboard** | http://localhost |
-| **API Explorer** | http://localhost/docs |
-| **Health Check** | http://localhost/health |
+| **Dashboard** | http://localhost:8080 |
+| **API Explorer** | http://localhost:8080/docs |
+| **Health Check** | http://localhost:8080/health |
 
 ---
 
@@ -92,16 +92,16 @@ Every API endpoint requires a JWT bearer token. Each user belongs to an **Organi
 
 ```bash
 # Register (auto-creates a personal org)
-curl -X POST http://localhost/auth/register \
+curl -X POST http://localhost:8080/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email": "you@example.com", "password": "yourpassword"}'
 
 # Login — returns access_token
-curl -X POST http://localhost/auth/login \
+curl -X POST http://localhost:8080/auth/login \
   -d "username=you@example.com&password=yourpassword"
 
 # Use the token
-curl http://localhost/api/v1/clusters/ \
+curl http://localhost:8080/api/v1/clusters/ \
   -H "Authorization: Bearer <access_token>"
 ```
 
@@ -196,7 +196,7 @@ RETENTION_DAYS=7
                          │
 ┌────────────────────────▼────────────────────────────────────┐
 │                  INTELLIGENCE LAYER                         │
-│    Trigger: weighted_score >= 2.5 (sum of credibility)      │
+│    Trigger: weighted_score >= CLUSTER_INTELLIGENCE_WEIGHTED_THRESHOLD      │
 │    Gemini 1.5 Flash → GPT-4o-mini (fallback)                │
 │    Output: headline · 3 bullets · entities · volatility     │
 │    Strategy engine: derives trade signals from clusters     │
@@ -271,6 +271,7 @@ RETENTION_DAYS=7
 | `INGESTION_INTERVAL_SECONDS` | No | `120` | RSS + Reddit poll frequency |
 | `CLUSTER_RUN_INTERVAL_SECONDS` | No | `60` | HDBSCAN clustering frequency |
 | `CLUSTER_COSINE_THRESHOLD` | No | `0.18` | Max distance to merge into existing cluster |
+| `CLUSTER_INTELLIGENCE_WEIGHTED_THRESHOLD` | No | `1.8` | Min sum of source credibility to trigger AI summarization |
 | `DEDUP_SIMILARITY_THRESHOLD` | No | `0.92` | Cosine threshold for semantic deduplication |
 | `BACKUP_S3_BUCKET` | No | — | S3 bucket for offsite backup uploads |
 
@@ -324,10 +325,9 @@ Test coverage: auth flows, cluster CRUD, supply-chain queries, strategy listing,
 **`Docker is not running`**  
 Open Docker Desktop and wait for the whale icon to stop animating.
 
-**`Port 3000 or 8000 already in use`**
+**`Port 8080 already in use`**
 ```bash
-lsof -ti:3000 | xargs kill -9
-lsof -ti:8000 | xargs kill -9
+lsof -ti:8080 | xargs kill -9
 ```
 
 **No articles or clusters after 5 minutes**  
@@ -356,8 +356,8 @@ Strategy signals and market commentary are produced by automated AI systems. The
 
 **WorldState is not a registered investment adviser. Nothing on this platform constitutes investment advice.**
 
-- Terms of Service: http://localhost/terms
-- Privacy Policy: http://localhost/privacy
+- Terms of Service: http://localhost:8080/terms
+- Privacy Policy: http://localhost:8080/privacy
 - Signal methodology: `GET /api/v1/strategies/methodology`
 
 ---

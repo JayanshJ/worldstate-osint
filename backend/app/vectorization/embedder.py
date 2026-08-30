@@ -13,7 +13,13 @@ import asyncio
 import logging
 import uuid
 
-from openai import AsyncOpenAI
+from openai import (
+    APIConnectionError,
+    APIError,
+    APITimeoutError,
+    AsyncOpenAI,
+    RateLimitError,
+)
 from sqlalchemy import select, update
 
 from app.core.config import get_settings
@@ -21,6 +27,7 @@ from app.core.database import AsyncSessionLocal
 from app.core.redis_client import (
     CHANNEL_NEW_ARTICLE,
     dequeue_article,
+    enqueue_article,
     publish_event,
 )
 from app.ingestion.deduplication import find_semantic_duplicate
@@ -52,8 +59,14 @@ def _build_embed_input(title: str, body: str | None) -> str:
 
 
 async def embed_text(text: str) -> list[float]:
-    """Call OpenAI embedding API with retry on rate limit."""
+    """Call OpenAI embedding API with retry only on transient errors.
+
+    Retrying on a 400 (bad input) or 401 (bad key) just wastes attempts and
+    delays surfacing the real problem, so we only retry on rate-limit /
+    connection / timeout errors and raise everything else immediately.
+    """
     client = get_openai()
+    transient = (RateLimitError, APIConnectionError, APITimeoutError)
     for attempt in range(3):
         try:
             response = await client.embeddings.create(
@@ -62,19 +75,47 @@ async def embed_text(text: str) -> list[float]:
                 dimensions=settings.embedding_dimensions,
             )
             return response.data[0].embedding
-        except Exception as e:
+        except transient as e:
             if attempt == 2:
                 raise
             wait = 2 ** attempt
-            logger.warning("Embed attempt %d failed: %s. Retrying in %ds", attempt + 1, e, wait)
+            logger.warning("Embed attempt %d failed (transient): %s. Retrying in %ds", attempt + 1, e, wait)
             await asyncio.sleep(wait)
+        except APIError as e:
+            # Non-transient API error (400/401/403/422) — don't retry, raise now.
+            logger.error("Embedding call rejected by API: %s", e)
+            raise
+    raise RuntimeError("Embedding failed after 3 retries")
 
 
-async def process_article(article_id: str) -> bool:
+async def process_article(article_id: str, max_retries: int = 3) -> bool:
     """
     Full vectorization pipeline for a single article.
     Returns True if article was successfully processed (not a semantic dup).
+    Tracks retry count in Redis — after max_retries, gives up (dead-letter).
     """
+    from app.core.redis_client import get_redis
+
+    # Check/track retry count
+    retry_key = f"embed_retries:{article_id}"
+    try:
+        r = get_redis()
+        retries = await r.incr(retry_key)
+        await r.expire(retry_key, 3600)  # 1h TTL
+    except Exception:
+        retries = 1
+
+    if retries > max_retries:
+        logger.error("Article %s exceeded %d embed retries — dead-lettering", article_id, max_retries)
+        # Mark as processed to stop re-queueing
+        async with AsyncSessionLocal() as db:
+            await db.execute(
+                update(RawArticle)
+                .where(RawArticle.id == uuid.UUID(article_id))
+                .values(is_processed=True)
+            )
+            await db.commit()
+        return False
     async with AsyncSessionLocal() as db:
         result = await db.execute(
             select(RawArticle).where(RawArticle.id == uuid.UUID(article_id))
@@ -93,7 +134,9 @@ async def process_article(article_id: str) -> bool:
             embed_input = _build_embed_input(article.title, article.body)
             embedding = await embed_text(embed_input)
         except Exception as e:
-            logger.error("Embedding failed for %s: %s", article_id, e)
+            logger.error("Embedding failed for %s: %s — re-enqueueing", article_id, e)
+            await asyncio.sleep(2)
+            await enqueue_article(article_id)
             return False
 
         # Layer 2 semantic dedup (now that we have the embedding)

@@ -5,7 +5,7 @@ Alert Watch CRUD API
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,6 +27,8 @@ class WatchCreate(BaseModel):
     min_volatility: float            = Field(default=0.0, ge=0.0, le=1.0)
     min_sources:    int              = Field(default=1, ge=1)
     channel:        str              = Field(default="websocket")
+    email_address:  str | None       = None
+    webhook_url:    str | None       = None
 
 
 class WatchOut(BaseModel):
@@ -42,6 +44,8 @@ class WatchOut(BaseModel):
     last_fired_at:  str | None
     fire_count:     int
     channel:        str
+    email_address:  str | None
+    webhook_url:    str | None
 
 
 def _to_out(w: AlertWatch) -> WatchOut:
@@ -58,6 +62,8 @@ def _to_out(w: AlertWatch) -> WatchOut:
         last_fired_at=w.last_fired_at.isoformat() if w.last_fired_at else None,
         fire_count=w.fire_count,
         channel=w.channel,
+        email_address=w.email_address,
+        webhook_url=w.webhook_url,
     )
 
 
@@ -90,7 +96,7 @@ async def create_watch(
     if not any([body.keywords, body.entities, body.source_ids]):
         raise HTTPException(400, "Provide at least one of: keywords, entities, source_ids")
 
-    watch = AlertWatch(**body.model_dump(), org_id=user.org_id)
+    watch = AlertWatch(**body.model_dump(), org_id=user.org_id, created_by=user.id)
     db.add(watch)
     await db.flush()
     await db.commit()
@@ -109,6 +115,9 @@ async def toggle_watch(
     watch = result.scalar_one_or_none()
     if not watch:
         raise HTTPException(404, "Watch not found")
+    # Only the creator (or admin) can toggle
+    if watch.created_by != user.id and not user.is_admin:
+        raise HTTPException(403, "Not the watch owner")
     watch.is_active = not watch.is_active
     await db.commit()
     return _to_out(watch)
@@ -126,6 +135,9 @@ async def delete_watch(
     watch = result.scalar_one_or_none()
     if not watch:
         raise HTTPException(404, "Watch not found")
+    # Only the creator (or admin) can delete
+    if watch.created_by != user.id and not user.is_admin:
+        raise HTTPException(403, "Not the watch owner")
     await db.delete(watch)
     await db.commit()
 
@@ -135,7 +147,7 @@ async def get_firings(
     watch_id: uuid.UUID,
     db:       Annotated[AsyncSession, Depends(get_db)],
     user:     Annotated[object, Depends(get_current_user)],
-    limit:    int = 20,
+    limit:    int = Query(20, ge=1, le=200),
 ):
     # Verify watch belongs to user's org before returning firings
     watch_check = await db.execute(

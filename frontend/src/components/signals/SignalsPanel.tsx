@@ -330,6 +330,7 @@ export function SignalsPanel() {
   const [activeAction, setActiveAction] = useState<Action | 'ALL'>('ALL')
   const [searchQuery,  setSearchQuery]  = useState('')
   const [grouped,      setGrouped]      = useState(true)
+  const [stocksOnly,   setStocksOnly]   = useState(false)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const load = useCallback(async () => {
@@ -366,8 +367,8 @@ export function SignalsPanel() {
   }
 
   const filtered = signals
-    .filter(s => /^[A-Z]{1,5}$/.test(s.ticker ?? ''))
     .filter(s => {
+      if (stocksOnly && !s.ticker) return false
       if (activeFilter !== 'ALL') {
         const group = FILTER_GROUPS[activeFilter]
         if (group ? !group.includes(s.signal_type) : s.signal_type !== activeFilter) return false
@@ -470,9 +471,20 @@ export function SignalsPanel() {
           )
         })}
         <button
-          onClick={() => setGrouped(g => !g)}
+          onClick={() => setStocksOnly(s => !s)}
           className={cn(
             'ml-auto text-[9px] font-mono tracking-wide px-2.5 py-1 rounded-sm transition-colors border whitespace-nowrap',
+            stocksOnly
+              ? 'bg-terminal-accent/15 text-terminal-accent border-terminal-accent/30'
+              : 'text-terminal-dim hover:text-terminal-text border-transparent',
+          )}
+        >
+          Stocks only
+        </button>
+        <button
+          onClick={() => setGrouped(g => !g)}
+          className={cn(
+            'text-[9px] font-mono tracking-wide px-2.5 py-1 rounded-sm transition-colors border whitespace-nowrap',
             grouped
               ? 'bg-terminal-accent/15 text-terminal-accent border-terminal-accent/30'
               : 'text-terminal-dim hover:text-terminal-text border-transparent',
@@ -521,13 +533,6 @@ export function SignalsPanel() {
             {filtered.map(s => <SignalCard key={s.id} signal={s} />)}
           </div>
         )}
-      </div>
-
-      {/* Disclaimer */}
-      <div className="flex-shrink-0 px-4 py-2 border-t border-terminal-border">
-        <p className="text-[8px] font-mono text-terminal-dim/40">
-          Not financial advice · AI analysis is for informational purposes only · Always do your own research before investing
-        </p>
       </div>
     </div>
   )

@@ -47,7 +47,9 @@ if [[ ! -f "$ENV_FILE" ]]; then
 
   cat > "$ENV_FILE" <<EOF
 # App
-ENVIRONMENT=production
+# "development" enables localhost CORS + SQL echo logging (safe for local use).
+# Set to "production" only when deploying with a real domain + TLS.
+ENVIRONMENT=development
 LOG_LEVEL=INFO
 
 # Auth — auto-generated, do not share
@@ -108,9 +110,9 @@ trap cleanup INT TERM
 # ── Launch ─────────────────────────────────────────────────────────────────────
 info "Starting all services (Postgres · Redis · API · workers · frontend)..."
 info "First run takes ~5 min to build images. Subsequent starts take ~30s.\n"
-echo -e "  ${bold}Dashboard:${reset}  http://localhost"
-echo -e "  ${bold}API docs:${reset}   http://localhost/docs   (via nginx)"
-echo -e "  ${bold}Health:${reset}     http://localhost/health\n"
+echo -e "  ${bold}Dashboard:${reset}  http://localhost:8080"
+echo -e "  ${bold}API docs:${reset}   http://localhost:8080/docs   (via nginx)"
+echo -e "  ${bold}Health:${reset}     http://localhost:8080/health\n"
 echo -e "  Press ${bold}Ctrl+C${reset} to stop all services.\n"
 
 docker compose -f "$ROOT/docker-compose.yml" --env-file "$ENV_FILE" up --build "$@"

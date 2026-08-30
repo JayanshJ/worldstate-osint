@@ -5,7 +5,7 @@ from sqlalchemy import Boolean, Float, String, Text, TIMESTAMP
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.database import Base
+from app.core.database import Base, utcnow
 
 
 class MarketSignal(Base):
@@ -38,6 +38,6 @@ class MarketSignal(Base):
 
     # Timestamps
     published_at: Mapped[datetime]      = mapped_column(TIMESTAMP(timezone=True))
-    fetched_at:   Mapped[datetime]      = mapped_column(TIMESTAMP(timezone=True), default=datetime.utcnow)
+    fetched_at:   Mapped[datetime]      = mapped_column(TIMESTAMP(timezone=True), default=utcnow)
     expires_at:   Mapped[datetime]      = mapped_column(TIMESTAMP(timezone=True), index=True)
     is_active:    Mapped[bool]          = mapped_column(Boolean, default=True)

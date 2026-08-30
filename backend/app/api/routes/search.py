@@ -198,6 +198,7 @@ async def semantic_search(
             JOIN   raw_articles ra    ON ra.id = ae.article_id
             LEFT   JOIN cluster_members cm ON cm.article_id = ra.id
             LEFT   JOIN event_clusters  ec ON ec.id = cm.cluster_id AND ec.is_active = TRUE
+            WHERE  1 - (ae.embedding <=> CAST(:vec AS vector)) > 0.35
             ORDER  BY ae.embedding <=> CAST(:vec AS vector)
             LIMIT  :lim
         """),
@@ -217,7 +218,6 @@ async def semantic_search(
             cluster_volatility=row.cluster_volatility,
         )
         for row in article_result.fetchall()
-        if row.score > 0.35  # filter low-relevance results
     ]
 
     # ANN search over cluster centroids

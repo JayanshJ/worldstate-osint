@@ -64,9 +64,29 @@ export function formatTzClock(tz: string): string {
   })
 }
 
-// Keep for any legacy callers — maps to formatAbsTime with UTC
+/**
+ * Relative time formatter: "5m ago", "3h ago", "2d ago"
+ * Falls back to absolute date for older items.
+ */
 export function timeAgo(iso: string | null | undefined): string {
-  return formatAbsTime(iso, 'UTC')
+  if (!iso) return '—'
+  try {
+    const d = new Date(iso)
+    const now = new Date()
+    const diff = now.getTime() - d.getTime()
+    if (diff < 0) return 'just now'
+    const sec = Math.floor(diff / 1000)
+    if (sec < 60) return `${sec}s ago`
+    const min = Math.floor(sec / 60)
+    if (min < 60) return `${min}m ago`
+    const hr = Math.floor(min / 60)
+    if (hr < 24) return `${hr}h ago`
+    const day = Math.floor(hr / 24)
+    if (day < 7) return `${day}d ago`
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  } catch {
+    return '—'
+  }
 }
 
 export function formatTime(iso: string | null | undefined): string {

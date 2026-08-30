@@ -82,6 +82,11 @@ SCRAPERS: list[BaseScraper] = [
     AFPLiveScraper(),
 ]
 
+# Hard cap per scraper. Even if a page hangs on a JS loop or a slow selector,
+# the cycle moves on so RSS/Reddit ingestion (which share the same event loop
+# via asyncio.gather in the ingestion runner) are never starved.
+SCRAPER_TIMEOUT_S = 45
+
 
 # ─── Runner ───────────────────────────────────────────────────────────────
 
@@ -104,9 +109,16 @@ async def run_playwright_cycle() -> None:
         all_items: list[dict] = []
         for scraper in SCRAPERS:
             try:
-                items = await scraper.scrape(context)
+                # Hard timeout per scraper — a hung page must not block the
+                # shared event loop (RSS/Reddit run concurrently in the same
+                # process). On timeout we log and move to the next scraper.
+                items = await asyncio.wait_for(
+                    scraper.scrape(context), timeout=SCRAPER_TIMEOUT_S
+                )
                 all_items.extend(items)
                 logger.debug("Playwright [%s]: %d items", scraper.source_id, len(items))
+            except asyncio.TimeoutError:
+                logger.warning("Scraper %s exceeded %ds — skipping cycle", scraper.source_id, SCRAPER_TIMEOUT_S)
             except Exception as e:
                 logger.error("Scraper %s failed: %s", scraper.source_id, e)
 
@@ -133,10 +145,11 @@ async def run_playwright_cycle() -> None:
             )
             db.add(article)
             try:
-                await db.flush()
+                async with db.begin_nested():
+                    await db.flush()
                 new_ids.append(str(article.id))
             except Exception:
-                await db.rollback()
+                pass
 
         await db.commit()
 

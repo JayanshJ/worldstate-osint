@@ -6,7 +6,7 @@ from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text, TIMEST
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.database import Base
+from app.core.database import Base, utcnow
 
 
 class RawArticle(Base):
@@ -19,7 +19,7 @@ class RawArticle(Base):
     title: Mapped[str] = mapped_column(Text, nullable=False)
     body: Mapped[str | None] = mapped_column(Text)
     published_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
-    ingested_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=datetime.utcnow)
+    ingested_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=utcnow)
     raw_json: Mapped[dict | None] = mapped_column(JSONB)
     content_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     credibility_score: Mapped[float] = mapped_column(Float, default=0.5)
@@ -36,7 +36,7 @@ class ArticleEmbedding(Base):
     article_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("raw_articles.id", ondelete="CASCADE"))
     embedding: Mapped[list[float]] = mapped_column(Vector(1536), nullable=False)
     model: Mapped[str] = mapped_column(String(100), default="text-embedding-3-small")
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=utcnow)
 
     article: Mapped["RawArticle"] = relationship(back_populates="embedding")
 
@@ -53,8 +53,8 @@ class EventCluster(Base):
     sentiment: Mapped[float] = mapped_column(Float, default=0.0)
     summary_bullets: Mapped[list | None] = mapped_column(JSONB)
     key_entities: Mapped[dict | None] = mapped_column(JSONB)
-    first_seen_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=datetime.utcnow)
-    last_updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=datetime.utcnow)
+    first_seen_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=utcnow)
+    last_updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=utcnow)
     expires_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     hdbscan_label: Mapped[int | None] = mapped_column(Integer)
@@ -70,7 +70,7 @@ class ClusterMember(Base):
     cluster_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("event_clusters.id", ondelete="CASCADE"))
     article_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("raw_articles.id", ondelete="CASCADE"))
     distance: Mapped[float | None] = mapped_column(Float)
-    added_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=datetime.utcnow)
+    added_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=utcnow)
 
     cluster: Mapped["EventCluster"] = relationship(back_populates="members")
     article: Mapped["RawArticle"] = relationship(back_populates="cluster_memberships")

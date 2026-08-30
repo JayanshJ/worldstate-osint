@@ -9,24 +9,63 @@ cluster. If a watch matches and hasn't fired in the last N minutes, it fires:
 """
 
 import asyncio
+import ipaddress
 import logging
+import socket
 import uuid
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlparse
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
-from app.core.redis_client import get_redis, publish_event
+from app.core.redis_client import (
+    CHANNEL_ALERT,
+    get_redis,
+    publish_event,
+)
 from app.models.alert import AlertFiring, AlertWatch
 from app.models.article import ClusterMember, EventCluster, RawArticle
 
-CHANNEL_ALERT = "worldstate:alert"
 ALERT_COOLDOWN_MINUTES = 15          # min time between firings for same watch+cluster
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
+
+_BLOCKED_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1", "169.254.169.254"}
+
+
+def _is_safe_webhook_url(url: str) -> bool:
+    """Prevent SSRF — reject internal/loopback/link-local addresses."""
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return False
+        host = parsed.hostname
+        if not host:
+            return False
+        if host in _BLOCKED_HOSTS:
+            return False
+        # Resolve and check for private/loopback IPs
+        try:
+            addr = ipaddress.ip_address(host)
+            if addr.is_private or addr.is_loopback or addr.is_link_local:
+                return False
+        except ValueError:
+            # Hostname — resolve DNS
+            try:
+                resolved = socket.getaddrinfo(host, None)
+                for family, _, _, _, sockaddr in resolved:
+                    ip = ipaddress.ip_address(sockaddr[0])
+                    if ip.is_private or ip.is_loopback or ip.is_link_local:
+                        return False
+            except socket.gaierror:
+                return False
+        return True
+    except Exception:
+        return False
 
 
 def _cluster_matches_watch(
@@ -100,8 +139,20 @@ async def evaluate_alerts(cluster_id: str) -> None:
         cooldown_cutoff = now - timedelta(minutes=ALERT_COOLDOWN_MINUTES)
 
         for watch in watches:
-            # Cooldown: don't re-fire the same watch too quickly
-            if watch.last_fired_at and watch.last_fired_at.replace(tzinfo=timezone.utc) > cooldown_cutoff:
+            # Cooldown: per (watch, cluster) — don't re-fire the same watch
+            # for the same cluster within the cooldown window. Check the
+            # firings table rather than relying on watch.last_fired_at
+            # which is per-watch only.
+            recent_firing = await db.execute(
+                select(AlertFiring)
+                .where(
+                    AlertFiring.watch_id == watch.id,
+                    AlertFiring.cluster_id == cluster.id,
+                    AlertFiring.fired_at >= cooldown_cutoff,
+                )
+                .limit(1)
+            )
+            if recent_firing.scalar_one_or_none():
                 continue
 
             if not _cluster_matches_watch(cluster, watch, member_titles, member_entities, source_ids):
@@ -152,14 +203,17 @@ async def evaluate_alerts(cluster_id: str) -> None:
                 asyncio.create_task(send_email(watch.email_address, subject, html))
 
             if watch.webhook_url:
-                import httpx as _httpx
-                async def _post_webhook(url: str, body: dict) -> None:
-                    try:
-                        async with _httpx.AsyncClient(timeout=8) as _c:
-                            await _c.post(url, json=body)
-                    except Exception as _e:
-                        logger.warning("Webhook delivery failed: %s", _e)
-                asyncio.create_task(_post_webhook(watch.webhook_url, payload))
+                if not _is_safe_webhook_url(watch.webhook_url):
+                    logger.warning("Blocked unsafe webhook URL: %s", watch.webhook_url)
+                else:
+                    import httpx as _httpx
+                    async def _post_webhook(url: str, body: dict) -> None:
+                        try:
+                            async with _httpx.AsyncClient(timeout=8) as _c:
+                                await _c.post(url, json=body)
+                        except Exception as _e:
+                            logger.warning("Webhook delivery failed: %s", _e)
+                    asyncio.create_task(_post_webhook(watch.webhook_url, payload))
 
             logger.info(
                 "Alert fired: watch=%s cluster=%s volt=%.2f",

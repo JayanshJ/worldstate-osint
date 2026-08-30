@@ -5,7 +5,7 @@ from sqlalchemy import Boolean, ForeignKey, String, TIMESTAMP
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.database import Base
+from app.core.database import Base, utcnow
 
 
 class User(Base):
@@ -17,4 +17,4 @@ class User(Base):
     is_admin:        Mapped[bool]           = mapped_column(Boolean, default=False)
     is_approved:     Mapped[bool]           = mapped_column(Boolean, default=False)
     org_id:          Mapped[uuid.UUID|None] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
-    created_at:      Mapped[datetime]       = mapped_column(TIMESTAMP(timezone=True), default=datetime.utcnow)
+    created_at:      Mapped[datetime]       = mapped_column(TIMESTAMP(timezone=True), default=utcnow)

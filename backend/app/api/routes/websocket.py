@@ -15,8 +15,10 @@ import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
 from app.core.config import get_settings
-from app.core.security import decode_token
+from app.core.database import AsyncSessionLocal
+from app.core.security import load_user_from_token
 from app.core.redis_client import (
+    CHANNEL_ALERT,
     CHANNEL_BREAKING,
     CHANNEL_CLUSTER_UPDATE,
     CHANNEL_NEW_ARTICLE,
@@ -46,14 +48,18 @@ class ConnectionManager:
         if not self._active:
             return
         data = json.dumps(message)
-        dead = set()
-        for ws in self._active:
-            try:
-                await ws.send_text(data)
-            except Exception:
-                dead.add(ws)
-        for ws in dead:
-            self._active.discard(ws)
+        # Fan out in parallel so a single slow/dead client can't block
+        # delivery to all others. Exceptions are collected and those sockets
+        # are discarded. Iterate over a snapshot to avoid mutating the set
+        # during iteration.
+        snapshot = list(self._active)
+        results = await asyncio.gather(
+            *(ws.send_text(data) for ws in snapshot),
+            return_exceptions=True,
+        )
+        for ws, res in zip(snapshot, results):
+            if isinstance(res, Exception):
+                self._active.discard(ws)
 
     @property
     def client_count(self) -> int:
@@ -75,6 +81,7 @@ async def redis_listener() -> None:
         CHANNEL_CLUSTER_UPDATE,
         CHANNEL_BREAKING,
         CHANNEL_STRATEGY_UPDATE,
+        CHANNEL_ALERT,
     )
     logger.info("Redis pub/sub listener started")
 
@@ -88,6 +95,7 @@ async def redis_listener() -> None:
                 CHANNEL_CLUSTER_UPDATE:  "cluster_update",
                 CHANNEL_BREAKING:        "breaking",
                 CHANNEL_STRATEGY_UPDATE: "strategy_update",
+                CHANNEL_ALERT:           "alert",
             }.get(message["channel"], "unknown")
 
             await manager.broadcast({"type": event_type, "data": payload})
@@ -99,21 +107,18 @@ async def redis_listener() -> None:
 _listener_task: asyncio.Task | None = None
 
 
-@router.on_event("startup")
-async def start_redis_listener():
-    global _listener_task
-    _listener_task = asyncio.create_task(redis_listener())
-
-
 @router.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket, token: str | None = None):
-    # Validate JWT before accepting the connection
+    # Validate JWT before accepting the connection.
     if not token:
         await ws.close(code=1008)
         return
-    try:
-        decode_token(token)
-    except Exception:
+    # Verify the token belongs to a real, approved user (not just a validly
+    # signed JWT for a deleted/disabled account). DB check happens before
+    # ws.accept() so failed auth never enters the connection pool.
+    async with AsyncSessionLocal() as db:
+        user = await load_user_from_token(token, db)
+    if user is None:
         await ws.close(code=1008)
         return
     await manager.connect(ws)

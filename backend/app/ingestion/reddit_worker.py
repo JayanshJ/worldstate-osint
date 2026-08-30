@@ -18,10 +18,25 @@ from app.ingestion.deduplication import check_duplicate, compute_content_hash
 from app.ingestion.sources import REDDIT_SOURCES
 from app.models.article import RawArticle
 
+from collections import OrderedDict
+
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
-_seen_reddit_ids: set[str] = set()
+# Bounded LRU cache — caps at 5000 entries to prevent unbounded memory growth
+_SEEN_MAX = 5000
+_seen_reddit_ids: OrderedDict[str, None] = OrderedDict()
+
+
+def _mark_seen(item_id: str) -> bool:
+    """Returns True if newly seen (not a dup)."""
+    if item_id in _seen_reddit_ids:
+        return False
+    _seen_reddit_ids[item_id] = None
+    _seen_reddit_ids.move_to_end(item_id, last=False)
+    while len(_seen_reddit_ids) > _SEEN_MAX:
+        _seen_reddit_ids.popitem(last=True)
+    return True
 
 
 async def fetch_subreddit(reddit: asyncpraw.Reddit, source_config: dict) -> list[dict]:
@@ -34,9 +49,8 @@ async def fetch_subreddit(reddit: asyncpraw.Reddit, source_config: dict) -> list
         subreddit = await reddit.subreddit(subreddit_name)
         items = []
         async for submission in subreddit.hot(limit=limit):
-            if submission.id in _seen_reddit_ids:
+            if not _mark_seen(submission.id):
                 continue
-            _seen_reddit_ids.add(submission.id)
 
             # Skip stickied mod posts and very low-score submissions
             if submission.stickied or submission.score < 10:
@@ -116,10 +130,11 @@ async def run_reddit_cycle() -> None:
             )
             db.add(article)
             try:
-                await db.flush()
+                async with db.begin_nested():
+                    await db.flush()
                 new_ids.append(str(article.id))
             except Exception:
-                await db.rollback()
+                pass
 
         await db.commit()
 

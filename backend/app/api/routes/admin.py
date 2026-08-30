@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -39,33 +39,36 @@ async def list_orgs(
     admin: Annotated[User, Depends(require_admin)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    orgs = (await db.execute(select(Organization).order_by(Organization.created_at.desc()))).scalars().all()
+    since = datetime.now(timezone.utc) - timedelta(hours=24)
 
-    result = []
-    for org in orgs:
-        user_count = (await db.execute(
-            select(func.count()).select_from(User).where(User.org_id == org.id)
-        )).scalar() or 0
-        alert_count = (await db.execute(
-            select(func.count()).select_from(AlertWatch).where(AlertWatch.org_id == org.id)
-        )).scalar() or 0
-        # API calls in last 24 h
-        since = datetime.now(timezone.utc) - timedelta(hours=24)
-        api_calls_24h = (await db.execute(
-            select(func.count()).select_from(AuditLog)
-            .where(AuditLog.org_id == org.id, AuditLog.created_at >= since)
-        )).scalar() or 0
+    # Single query with correlated subqueries — avoids N+1 (3 queries per org)
+    stmt = (
+        select(
+            Organization,
+            (select(func.count()).select_from(User)
+             .where(User.org_id == Organization.id)).label("user_count"),
+            (select(func.count()).select_from(AlertWatch)
+             .where(AlertWatch.org_id == Organization.id)).label("alert_count"),
+            (select(func.count()).select_from(AuditLog)
+             .where(AuditLog.org_id == Organization.id, AuditLog.created_at >= since)
+            ).label("api_calls_24h"),
+        )
+        .order_by(Organization.created_at.desc())
+    )
+    rows = (await db.execute(stmt)).all()
 
-        result.append({
+    return [
+        {
             "id":            str(org.id),
             "name":          org.name,
             "slug":          org.slug,
             "created_at":    org.created_at.isoformat() if org.created_at else None,
-            "user_count":    user_count,
-            "alert_count":   alert_count,
-            "api_calls_24h": api_calls_24h,
-        })
-    return result
+            "user_count":    user_count or 0,
+            "alert_count":   alert_count or 0,
+            "api_calls_24h": api_calls_24h or 0,
+        }
+        for org, user_count, alert_count, api_calls_24h in rows
+    ]
 
 
 @router.get("/orgs/{org_id}")
@@ -100,6 +103,12 @@ async def delete_org(
     org = (await db.execute(select(Organization).where(Organization.id == org_id))).scalar_one_or_none()
     if not org:
         raise HTTPException(404, "Organisation not found")
+    # Cascade: delete users, alert watches, and scrub audit logs for this org
+    await db.execute(delete(AlertWatch).where(AlertWatch.org_id == org_id))
+    await db.execute(delete(User).where(User.org_id == org_id))
+    await db.execute(
+        update(AuditLog).where(AuditLog.org_id == org_id).values(user_email="[deleted]")
+    )
     await db.execute(delete(Organization).where(Organization.id == org_id))
     await db.commit()
 

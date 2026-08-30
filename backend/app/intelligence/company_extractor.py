@@ -17,7 +17,10 @@ from typing import Any
 
 import httpx
 
+from app.core.config import get_settings
+
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 FINNHUB_BASE = "https://finnhub.io/api/v1"
 _UA          = {"User-Agent": "Bloomberg-Terminal research@company.com"}
@@ -199,10 +202,10 @@ Rules:
 
     try:
         resp = await openai_client.chat.completions.create(
-            model="gpt-4.1-mini",
+            model=settings.openai_model,
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.1,
-            max_tokens=1200,
+            temperature=1,
+            max_completion_tokens=1200,
         )
         raw = resp.choices[0].message.content.strip()
         raw = re.sub(r"^```(?:json)?\s*", "", raw)

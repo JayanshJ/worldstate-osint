@@ -45,6 +45,7 @@ EDGAR_ARCHIVES = "https://www.sec.gov/Archives/edgar/data"
 WIKI_API       = "https://en.wikipedia.org/w/api.php"
 
 _ticker_cache: dict[str, str] = {}
+_name_map_cache: dict[str, str] = {}
 
 
 # ─── SEC EDGAR helpers (metadata only) ────────────────────────────────────
@@ -387,8 +388,8 @@ async def _run_llm_extraction(
                 {"role": "user",   "content": user_msg},
             ],
             response_format={"type": "json_object"},
-            temperature=0.15,
-            max_tokens=8000,
+            temperature=1,
+            max_completion_tokens=8000,
         )
         data = json.loads(resp.choices[0].message.content)
         rels = data.get("relationships", [])
@@ -458,8 +459,8 @@ def _merge_relationships(all_rels: list[dict]) -> list[dict]:
 
 async def search_companies_by_name(q: str) -> list[dict]:
     """Search SEC ticker map by name or ticker. Returns [{ticker, name, cik}]."""
-    global _ticker_cache
-    if not _ticker_cache:
+    global _ticker_cache, _name_map_cache
+    if not _ticker_cache or not _name_map_cache:
         async with httpx.AsyncClient() as client:
             r = await client.get(
                 "https://www.sec.gov/files/company_tickers.json",
@@ -471,20 +472,7 @@ async def search_companies_by_name(q: str) -> list[dict]:
                 v["ticker"].upper(): str(v["cik_str"])
                 for v in data.values()
             }
-            # Build name map separately
-            _name_map = {
-                v["ticker"].upper(): v.get("title", "")
-                for v in data.values()
-            }
-    else:
-        # Rebuild name map from raw data if cache already populated
-        async with httpx.AsyncClient() as client:
-            r = await client.get(
-                "https://www.sec.gov/files/company_tickers.json",
-                headers=HEADERS, timeout=30,
-            )
-            data = r.json()
-            _name_map = {
+            _name_map_cache = {
                 v["ticker"].upper(): v.get("title", "")
                 for v in data.values()
             }
@@ -492,7 +480,7 @@ async def search_companies_by_name(q: str) -> list[dict]:
     q_upper = q.upper()
     q_lower = q.lower()
     results = []
-    for ticker, name in _name_map.items():
+    for ticker, name in _name_map_cache.items():
         if ticker.startswith(q_upper) or q_lower in name.lower():
             results.append({
                 "ticker": ticker,
@@ -656,16 +644,28 @@ async def enrich_supply_chain_live(ticker: str) -> None:
                 return
 
             as_of = date.today()
-
-            # Remove stale live edges before re-inserting
-            await db.execute(
-                delete(SCEdge).where(
-                    SCEdge.focal_id == company.id,
-                    SCEdge.direction.in_(list(_LIVE_DIRECTIONS)),
-                )
-            )
-
             count = 0
+            fetched_directions: set[str] = set()
+
+            # Track which directions returned data
+            if profile.get("shareholders", {}).get("institutions") or profile.get("shareholders", {}).get("mutual_funds"):
+                fetched_directions.add("SHAREHOLDER")
+            if profile.get("board"):
+                fetched_directions.add("BOARD")
+            if profile.get("analysts", {}).get("recent"):
+                fetched_directions.add("ANALYST")
+            if profile.get("industries"):
+                fetched_directions.add("INDUSTRY")
+
+            # Only delete stale edges for directions that were successfully
+            # fetched — avoids wiping prior data on partial failure.
+            if fetched_directions:
+                await db.execute(
+                    delete(SCEdge).where(
+                        SCEdge.focal_id == company.id,
+                        SCEdge.direction.in_(list(fetched_directions)),
+                    )
+                )
 
             # ── Shareholders ─────────────────────────────────────────
             shareholders = (
@@ -716,7 +716,7 @@ async def enrich_supply_chain_live(ticker: str) -> None:
                     entity_name       = firm[:255],
                     direction         = "ANALYST",
                     relationship_type = rating.get("rating", "HOLD"),
-                    disclosure_type   = "DISCLOSED",
+                    disclosure_type   = "INFERRED",
                     confidence        = 0.90,
                     as_of_date        = as_of,
                 ))

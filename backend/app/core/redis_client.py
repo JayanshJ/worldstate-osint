@@ -26,6 +26,7 @@ CHANNEL_NEW_ARTICLE     = "worldstate:new_article"
 CHANNEL_CLUSTER_UPDATE  = "worldstate:cluster_update"
 CHANNEL_BREAKING        = "worldstate:breaking"
 CHANNEL_STRATEGY_UPDATE = "worldstate:strategy_update"
+CHANNEL_ALERT           = "worldstate:alert"
 
 
 async def publish_event(channel: str, payload: dict[str, Any]) -> None:

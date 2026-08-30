@@ -248,7 +248,7 @@ function CandleChart({ points, color, range, commodity, tz }: {
             <rect
               x={cx - candleW / 2} y={bodyTop}
               width={candleW} height={bodyH}
-              fill={isGreen ? `${clr}55` : `${clr}55`}
+              fill={isGreen ? `${clr}44` : `${clr}88`}
               stroke={clr} strokeWidth="0.75"
             />
           </g>

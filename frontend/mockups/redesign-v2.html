@@ -1,0 +1,1327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorldState — Redesign v2</title>
+<style>
+:root {
+  --bg-0: #06070b;
+  --bg-1: #0c0e14;
+  --bg-2: #14171f;
+  --bg-3: #1c2029;
+  --bg-glass: rgba(14, 17, 24, 0.80);
+  --border: rgba(255,255,255,0.05);
+  --border-2: rgba(255,255,255,0.09);
+  --border-glow: rgba(99, 179, 237, 0.2);
+  --text: #eef1f6;
+  --text-2: #8b93a3;
+  --text-3: #4d5566;
+  --cyan: #63b3ed;
+  --cyan-dim: #3182ce;
+  --cyan-glow: rgba(99, 179, 237, 0.12);
+  --amber: #f6ad55;
+  --green: #4fd1a8;
+  --red: #fc6180;
+  --yellow: #fbd38d;
+  --orange: #ff8845;
+  --purple: #b794f4;
+  --v-calm: #4fd1a8;
+  --v-mod: #fbd38d;
+  --v-high: #fc6180;
+  --v-crit: #ec407a;
+  --font-mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
+  --font-sans: 'Inter', -apple-system, system-ui, sans-serif;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { height:100%; overflow:hidden; }
+body {
+  background: var(--bg-0);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Ambient glow backdrop */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 80% 50% at 20% 0%, rgba(99, 179, 237, 0.04), transparent),
+    radial-gradient(ellipse 60% 40% at 80% 100%, rgba(246, 173, 85, 0.03), transparent);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ═══ SIDEBAR NAV ═══ */
+.sidebar {
+  position: fixed;
+  left: 0; top: 0; bottom: 0;
+  width: 56px;
+  background: var(--bg-1);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 0;
+  gap: 4px;
+  z-index: 10;
+}
+
+.nav-logo {
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--cyan), var(--cyan-dim));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--bg-0);
+  margin-bottom: 16px;
+}
+
+.nav-btn {
+  width: 40px; height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
+  color: var(--text-3);
+}
+
+.nav-btn:hover { color: var(--text-2); background: var(--bg-2); }
+.nav-btn.active { color: var(--cyan); background: var(--cyan-glow); }
+
+.nav-btn.active::before {
+  content: '';
+  position: absolute;
+  left: -12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 20px;
+  border-radius: 2px;
+  background: var(--cyan);
+}
+
+.nav-spacer { flex: 1; }
+
+/* ═══ APP SHELL ═══ */
+.app {
+  margin-left: 56px;
+  height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  position: relative;
+  z-index: 1;
+}
+
+/* ═══ TOP BAR ═══ */
+.topbar {
+  display: flex;
+  align-items: center;
+  padding: 10px 20px;
+  gap: 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-1);
+  height: 56px;
+}
+
+.tb-brand {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.tb-brand span { color: var(--cyan); }
+
+.tb-clock {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tb-clock .dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+  animation: pulse 2s infinite;
+}
+
+.tb-metals {
+  display: flex;
+  gap: 6px;
+  margin-left: 20px;
+}
+
+.metal {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.metal:hover { border-color: var(--border-2); background: var(--bg-3); }
+.metal .sym { color: var(--text-3); font-size: 10px; }
+.metal .px { font-weight: 600; color: var(--text); }
+.metal .chg { font-size: 10px; }
+.metal .chg.up { color: var(--green); }
+.metal .chg.dn { color: var(--red); }
+
+.tb-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tb-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: all 0.15s;
+  width: 260px;
+}
+.tb-search:hover { border-color: var(--border-glow); background: var(--bg-3); }
+.tb-search kbd {
+  margin-left: auto;
+  padding: 2px 6px;
+  background: var(--bg-3);
+  border: 1px solid var(--border-2);
+  border-radius: 4px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-3);
+}
+
+.tb-btn {
+  width: 36px; height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  color: var(--text-2);
+  position: relative;
+}
+.tb-btn:hover { background: var(--bg-3); border-color: var(--border-2); }
+.tb-btn .badge {
+  position: absolute;
+  top: -3px; right: -3px;
+  min-width: 16px; height: 16px;
+  padding: 0 4px;
+  background: var(--red);
+  border-radius: 8px;
+  font-size: 9px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-family: var(--font-mono);
+}
+
+.tb-avatar {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--cyan), var(--purple));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--bg-0);
+  cursor: pointer;
+}
+
+/* ═══ MAIN GRID — BENTO LAYOUT ═══ */
+.main {
+  padding: 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  grid-template-rows: auto auto 1fr auto;
+  gap: 12px;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ═══ STAT CARDS (top row) ═══ */
+.stat-card {
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card .lbl {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+
+.stat-card .val {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  font-family: var(--font-sans);
+}
+
+.stat-card .val.cyan { color: var(--cyan); }
+.stat-card .val.green { color: var(--green); }
+.stat-card .val.red { color: var(--red); }
+.stat-card .val.amber { color: var(--amber); }
+
+.stat-card .sub {
+  font-size: 11px;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.stat-card .trend {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.stat-card .trend.up { color: var(--green); background: rgba(79, 209, 168, 0.1); }
+.stat-card .trend.dn { color: var(--red); background: rgba(252, 97, 128, 0.1); }
+
+/* Mini sparkline */
+.stat-card .spark {
+  position: absolute;
+  right: 12px; bottom: 10px;
+  opacity: 0.5;
+}
+
+/* ═══ SECTION CARD (generic) ═══ */
+.card {
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-title .icon {
+  width: 20px; height: 20px;
+  border-radius: 5px;
+  background: var(--cyan-glow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--cyan);
+}
+
+.card-title h3 {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.card-title .count {
+  padding: 2px 7px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-2);
+  font-weight: 500;
+}
+
+.card-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.chip {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.chip:hover { color: var(--text); border-color: var(--border-2); }
+.chip.active { color: var(--cyan); background: var(--cyan-glow); border-color: var(--border-glow); }
+.chip .dot { width: 6px; height: 6px; border-radius: 50%; }
+
+/* ═══ EVENT CARDS (left/center column) ═══ */
+.event-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.event-list::-webkit-scrollbar { width: 5px; }
+.event-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.event {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+}
+
+.event:hover {
+  border-color: var(--border-2);
+  background: var(--bg-3);
+  transform: translateY(-1px);
+}
+
+.event.hot {
+  border-color: rgba(252, 97, 128, 0.2);
+  background: linear-gradient(135deg, rgba(252, 97, 128, 0.04), var(--bg-2));
+}
+
+/* Vol gauge ring */
+.event-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.vol-ring {
+  position: relative;
+  width: 36px; height: 36px;
+  flex-shrink: 0;
+}
+
+.vol-ring svg { transform: rotate(-90deg); }
+.vol-ring .track { stroke: var(--bg-3); }
+.vol-ring .fill { stroke-linecap: round; transition: stroke-dashoffset 0.5s; }
+
+.vol-ring .label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.event-cat {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-3);
+  font-weight: 600;
+  padding: 2px 8px;
+  background: var(--bg-3);
+  border-radius: 4px;
+}
+
+.event-time {
+  font-size: 11px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  margin-left: auto;
+}
+
+.event-sources {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+}
+
+.source-dots { display: flex; gap: 2px; }
+.source-dots .d {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+}
+
+.event-title {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+
+.event-bullets {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 10px;
+}
+
+.event-bullets .bullet {
+  display: flex;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--text-2);
+  line-height: 1.45;
+}
+
+.event-bullets .bullet::before {
+  content: '';
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: var(--text-3);
+  margin-top: 7px;
+  flex-shrink: 0;
+}
+
+.event-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.tag {
+  padding: 3px 8px;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-2);
+  font-weight: 500;
+}
+
+.sent-badge {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  padding: 3px 8px;
+  border-radius: 5px;
+}
+.sent-badge.pos { color: var(--green); background: rgba(79,209,168,0.1); }
+.sent-badge.neg { color: var(--red); background: rgba(252,97,128,0.1); }
+.sent-badge.neu { color: var(--text-3); background: var(--bg-3); }
+
+.new-flash {
+  display: inline-block;
+  padding: 2px 7px;
+  background: var(--cyan-glow);
+  border: 1px solid var(--border-glow);
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--cyan);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-right: 4px;
+}
+
+/* ═══ RIGHT COLUMN — Live Feed ═══ */
+.live-list {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.live-list::-webkit-scrollbar { width: 5px; }
+.live-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.live-item {
+  display: flex;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.live-item:hover { background: var(--bg-2); }
+
+.live-strip {
+  width: 3px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.live-body { flex: 1; min-width: 0; }
+.live-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.35;
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.live-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-3);
+}
+.live-meta .src { color: var(--text-2); font-weight: 500; }
+.cred {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+}
+
+/* Watchlist */
+.watch-box {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.watch-label {
+  font-size: 10px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  margin-bottom: 8px;
+  font-family: var(--font-mono);
+}
+
+.watch-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+
+.watch-tag {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-2);
+}
+
+.watch-tag .x { color: var(--text-3); cursor: pointer; font-size: 14px; line-height: 1; }
+.watch-tag .x:hover { color: var(--red); }
+
+.watch-add {
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-3);
+  outline: none;
+  width: 100%;
+  transition: border 0.15s;
+}
+.watch-add:focus { border-color: var(--border-glow); }
+.watch-add::placeholder { color: var(--text-3); }
+
+/* ═══ BOTTOM: Alert panel / Signals strip ═══ */
+.signal-strip {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.signal-strip::-webkit-scrollbar { display: none; }
+
+.sig-card {
+  flex-shrink: 0;
+  width: 280px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.sig-card:hover { border-color: var(--border-2); transform: translateY(-1px); }
+
+.sig-top { display: flex; align-items: center; gap: 8px; }
+
+.sig-icon {
+  width: 28px; height: 28px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.sig-icon.buy { background: rgba(79,209,168,0.12); color: var(--green); }
+.sig-icon.sell { background: rgba(252,97,128,0.12); color: var(--red); }
+.sig-icon.watch { background: rgba(251,211,141,0.12); color: var(--yellow); }
+
+.sig-type {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-3);
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.sig-ticker {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-left: auto;
+  font-family: var(--font-mono);
+}
+
+.sig-headline {
+  font-size: 12px;
+  color: var(--text-2);
+  line-height: 1.35;
+}
+
+.sig-bottom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.sig-src {
+  font-size: 10px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  margin-left: auto;
+}
+
+/* ═══ TICKER ═══ */
+.ticker {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  background: var(--bg-1);
+  border-top: 1px solid var(--border);
+  overflow: hidden;
+  position: relative;
+}
+
+.tk-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  height: 100%;
+  background: linear-gradient(135deg, var(--cyan), var(--cyan-dim));
+  color: var(--bg-0);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  font-family: var(--font-mono);
+  flex-shrink: 0;
+  z-index: 2;
+}
+
+.tk-label .dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--bg-0);
+  animation: pulse 1.5s infinite;
+}
+
+.tk-track {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding-left: 24px;
+  animation: scroll 50s linear infinite;
+  white-space: nowrap;
+}
+
+.tk-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+.tk-item .src { color: var(--text-3); font-weight: 500; }
+.tk-item .txt { color: var(--text-2); }
+.tk-item .v {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.tk-item .v.h { color: var(--v-high); background: rgba(252,97,128,0.1); }
+.tk-item .v.m { color: var(--v-mod); background: rgba(251,211,141,0.1); }
+.tk-item .v.c { color: var(--v-calm); background: rgba(79,209,168,0.1); }
+
+.ticker::after {
+  content: '';
+  position: absolute;
+  right: 0; top: 0; bottom: 0;
+  width: 80px;
+  background: linear-gradient(90deg, transparent, var(--bg-1));
+  z-index: 1;
+}
+
+@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+@keyframes scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+
+/* ═══ GRID PLACEMENT ═══ */
+.stat-1 { grid-column: 1; grid-row: 1; }
+.stat-2 { grid-column: 2; grid-row: 1; }
+.stat-3 { grid-column: 3; grid-row: 1; }
+.stat-4 { grid-column: 4; grid-row: 1; }
+.feed-card { grid-column: 1 / 3; grid-row: 2 / 4; }
+.live-card { grid-column: 3; grid-row: 2 / 4; }
+.alert-card { grid-column: 4; grid-row: 2; }
+.intel-card { grid-column: 4; grid-row: 3; }
+
+/* Alert card content */
+.alert-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.alert-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 4px;
+  box-shadow: 0 0 6px currentColor;
+}
+
+.alert-body { flex: 1; }
+.alert-name { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+.alert-detail { font-size: 11px; color: var(--text-2); line-height: 1.35; }
+.alert-time { font-size: 10px; color: var(--text-3); font-family: var(--font-mono); margin-top: 3px; }
+
+/* Intel card — mini briefing */
+.briefing { padding: 12px 14px; }
+.briefing-head {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  letter-spacing: -0.01em;
+}
+.briefing-tldr {
+  font-size: 12px;
+  color: var(--text-2);
+  line-height: 1.5;
+  margin-bottom: 10px;
+}
+.briefing-events { display: flex; flex-direction: column; gap: 8px; }
+.briefing-event {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 11px;
+}
+.briefing-event .vol-bar {
+  width: 3px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  align-self: stretch;
+}
+.briefing-event .txt { color: var(--text-2); line-height: 1.35; }
+.briefing-event .v { font-size: 10px; font-family: var(--font-mono); font-weight: 600; margin-left: auto; }
+</style>
+</head>
+<body>
+
+<!-- ═══ SIDEBAR ═══ -->
+<aside class="sidebar">
+  <div class="nav-logo">W</div>
+  <div class="nav-btn active" title="Feed">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+  </div>
+  <div class="nav-btn" title="Map">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 20l-5.5-2.5V5L9 7m0 13l6-2.5M9 20V7m6 10.5l5.5 2.5V7L15 4.5M15 14.5V4.5M15 4.5L9 7"/></svg>
+  </div>
+  <div class="nav-btn" title="Alpha">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+  </div>
+  <div class="nav-btn" title="Signals">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l3 9 4-18 3 9h4"/></svg>
+  </div>
+  <div class="nav-btn" title="Supply Chain">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6M9 18h6M15 15l3-6M6 15V6h6"/></svg>
+  </div>
+  <div class="nav-btn" title="SV">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>
+  </div>
+  <div class="nav-spacer"></div>
+  <div class="nav-btn" title="Settings">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 10v6m11-11h-6M7 12H1m17.5-7.5l-4.2 4.2M9.7 14.3l-4.2 4.2m13 0l-4.2-4.2M9.7 9.7L5.5 5.5"/></svg>
+  </div>
+</aside>
+
+<div class="app">
+
+  <!-- ═══ TOPBAR ═══ -->
+  <header class="topbar">
+    <div class="tb-brand">Worldstate<span>.</span></div>
+    <div class="tb-clock">
+      <div class="dot"></div>
+      14:32:05 UTC
+    </div>
+    <div class="tb-metals">
+      <div class="metal"><span class="sym">XAU</span><span class="px">2,647.30</span><span class="chg up">+0.42%</span></div>
+      <div class="metal"><span class="sym">XAG</span><span class="px">31.18</span><span class="chg dn">−0.15%</span></div>
+      <div class="metal"><span class="sym">XPT</span><span class="px">964.50</span><span class="chg up">+0.88%</span></div>
+      <div class="metal"><span class="sym">WTI</span><span class="px">71.92</span><span class="chg dn">−1.24%</span></div>
+    </div>
+    <div class="tb-right">
+      <div class="tb-search">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        Search intelligence…
+        <kbd>⌘K</kbd>
+      </div>
+      <div class="tb-btn" title="Alerts">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+        <span class="badge">3</span>
+      </div>
+      <div class="tb-btn" title="Theme">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </div>
+      <div class="tb-avatar">J</div>
+    </div>
+  </header>
+
+  <!-- ═══ MAIN BENTO GRID ═══ -->
+  <div class="main">
+
+    <!-- Stat cards -->
+    <div class="stat-card stat-1">
+      <div class="lbl">Articles / Min</div>
+      <div class="val cyan">14.2</div>
+      <div class="sub"><span class="trend up">↑ 12%</span> vs 1h ago</div>
+      <svg class="spark" width="60" height="24" viewBox="0 0 60 24"><polyline points="0,18 10,14 20,16 30,8 40,10 50,4 60,6" fill="none" stroke="var(--cyan)" stroke-width="1.5" opacity="0.4"/></svg>
+    </div>
+    <div class="stat-card stat-2">
+      <div class="lbl">Active Clusters</div>
+      <div class="val">38</div>
+      <div class="sub">
+        <span class="trend up">↑ 6 new</span>
+      </div>
+      <svg class="spark" width="60" height="24" viewBox="0 0 60 24"><polyline points="0,20 10,18 20,12 30,14 40,8 50,10 60,4" fill="none" stroke="var(--amber)" stroke-width="1.5" opacity="0.4"/></svg>
+    </div>
+    <div class="stat-card stat-3">
+      <div class="lbl">Critical Events</div>
+      <div class="val red">3</div>
+      <div class="sub">Volatility ≥ 0.85</div>
+      <svg class="spark" width="60" height="24" viewBox="0 0 60 24"><polyline points="0,20 10,20 20,4 30,20 40,20 50,2 60,20" fill="none" stroke="var(--red)" stroke-width="1.5" opacity="0.4"/></svg>
+    </div>
+    <div class="stat-card stat-4">
+      <div class="lbl">Sources Online</div>
+      <div class="val green">27/30</div>
+      <div class="sub">3 feeds degraded</div>
+      <svg class="spark" width="60" height="24" viewBox="0 0 60 24"><polyline points="0,6 10,8 20,6 30,6 40,8 50,6 60,6" fill="none" stroke="var(--green)" stroke-width="1.5" opacity="0.4"/></svg>
+    </div>
+
+    <!-- Event Feed (spans 2 cols) -->
+    <div class="card feed-card">
+      <div class="card-header">
+        <div class="card-title">
+          <div class="icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l3 9 4-18 3 9h4"/></svg>
+          </div>
+          <h3>Event Feed</h3>
+          <span class="count">38</span>
+        </div>
+        <div class="card-actions">
+          <div class="chip active">All</div>
+          <div class="chip"><div class="dot" style="background:var(--v-crit)"></div>Critical</div>
+          <div class="chip"><div class="dot" style="background:var(--v-high)"></div>High</div>
+          <div class="chip">Geopolitics</div>
+          <div class="chip">Markets</div>
+        </div>
+      </div>
+      <div class="event-list">
+
+        <!-- Event 1 -->
+        <div class="event hot">
+          <div class="event-top">
+            <div class="vol-ring">
+              <svg width="36" height="36">
+                <circle cx="18" cy="18" r="15" fill="none" class="track" stroke-width="3"/>
+                <circle cx="18" cy="18" r="15" fill="none" class="fill" stroke="var(--v-crit)" stroke-width="3" stroke-dasharray="94" stroke-dashoffset="8"/>
+              </svg>
+              <div class="label" style="color:var(--v-crit)">0.92</div>
+            </div>
+            <span class="new-flash">NEW</span>
+            <span class="event-cat">Geopolitics</span>
+            <div class="event-sources">
+              <div class="source-dots">
+                <div class="d" style="background:var(--cyan)"></div>
+                <div class="d" style="background:var(--orange)"></div>
+                <div class="d" style="background:var(--cyan)"></div>
+                <div class="d" style="background:var(--purple)"></div>
+              </div>
+              <span>7 src</span>
+            </div>
+            <span class="event-time">3m</span>
+          </div>
+          <div class="event-title">Red Sea shipping lane disrupted as Houthi forces target third vessel in 48 hours</div>
+          <div class="event-bullets">
+            <div class="bullet">Maersk suspends all Red Sea transits; 12% of global trade affected</div>
+            <div class="bullet">Brent crude futures surge 4.2% on supply chain fears</div>
+            <div class="bullet">US Central Command announces multinational naval task force</div>
+          </div>
+          <div class="event-tags">
+            <span class="tag">Maersk</span>
+            <span class="tag">Brent</span>
+            <span class="tag">CENTCOM</span>
+            <span class="sent-badge neg">−0.71</span>
+          </div>
+        </div>
+
+        <!-- Event 2 -->
+        <div class="event">
+          <div class="event-top">
+            <div class="vol-ring">
+              <svg width="36" height="36">
+                <circle cx="18" cy="18" r="15" fill="none" class="track" stroke-width="3"/>
+                <circle cx="18" cy="18" r="15" fill="none" class="fill" stroke="var(--v-high)" stroke-width="3" stroke-dasharray="94" stroke-dashoffset="21"/>
+              </svg>
+              <div class="label" style="color:var(--v-high)">0.78</div>
+            </div>
+            <span class="event-cat">Markets</span>
+            <div class="event-sources">
+              <div class="source-dots">
+                <div class="d" style="background:var(--cyan)"></div>
+                <div class="d" style="background:var(--cyan)"></div>
+                <div class="d" style="background:var(--orange)"></div>
+              </div>
+              <span>5 src</span>
+            </div>
+            <span class="event-time">12m</span>
+          </div>
+          <div class="event-title">Fed signals pause on rate hikes as inflation cools to 3.1%</div>
+          <div class="event-bullets">
+            <div class="bullet">FOMC minutes reveal split committee — 4 of 12 favor continued tightening</div>
+            <div class="bullet">2-year Treasury yield drops 15bps; dollar index falls 0.8%</div>
+          </div>
+          <div class="event-tags">
+            <span class="tag">Fed</span>
+            <span class="tag">FOMC</span>
+            <span class="tag">DXY</span>
+            <span class="sent-badge pos">+0.54</span>
+          </div>
+        </div>
+
+        <!-- Event 3 -->
+        <div class="event">
+          <div class="event-top">
+            <div class="vol-ring">
+              <svg width="36" height="36">
+                <circle cx="18" cy="18" r="15" fill="none" class="track" stroke-width="3"/>
+                <circle cx="18" cy="18" r="15" fill="none" class="fill" stroke="var(--v-mod)" stroke-width="3" stroke-dasharray="94" stroke-dashoffset="42"/>
+              </svg>
+              <div class="label" style="color:var(--v-mod)">0.55</div>
+            </div>
+            <span class="event-cat">Technology</span>
+            <div class="event-sources">
+              <div class="source-dots">
+                <div class="d" style="background:var(--cyan)"></div>
+                <div class="d" style="background:var(--purple)"></div>
+                <div class="d" style="background:var(--cyan)"></div>
+              </div>
+              <span>4 src</span>
+            </div>
+            <span class="event-time">24m</span>
+          </div>
+          <div class="event-title">Nvidia announces next-gen Blackwell GPU with 2.5x performance over Hopper</div>
+          <div class="event-bullets">
+            <div class="bullet">GB200 chip ships Q4; major cloud providers commit to infrastructure</div>
+            <div class="bullet">NVDA premarket +6.3%; semiconductor ETFs rally broadly</div>
+          </div>
+          <div class="event-tags">
+            <span class="tag">NVDA</span>
+            <span class="tag">Blackwell</span>
+            <span class="sent-badge pos">+0.68</span>
+          </div>
+        </div>
+
+        <!-- Event 4 -->
+        <div class="event">
+          <div class="event-top">
+            <div class="vol-ring">
+              <svg width="36" height="36">
+                <circle cx="18" cy="18" r="15" fill="none" class="track" stroke-width="3"/>
+                <circle cx="18" cy="18" r="15" fill="none" class="fill" stroke="var(--v-calm)" stroke-width="3" stroke-dasharray="94" stroke-dashoffset="65"/>
+              </svg>
+              <div class="label" style="color:var(--v-calm)">0.31</div>
+            </div>
+            <span class="event-cat">Energy</span>
+            <div class="event-sources">
+              <div class="source-dots">
+                <div class="d" style="background:var(--cyan)"></div>
+                <div class="d" style="background:var(--cyan)"></div>
+              </div>
+              <span>3 src</span>
+            </div>
+            <span class="event-time">38m</span>
+          </div>
+          <div class="event-title">OPEC+ extends production cuts through Q2 2026</div>
+          <div class="event-bullets">
+            <div class="bullet">Saudi Arabia and Russia agree to maintain 500K bpd voluntary cuts</div>
+            <div class="bullet">WTI crude holds above $70 on tightening supply outlook</div>
+          </div>
+          <div class="event-tags">
+            <span class="tag">OPEC+</span>
+            <span class="tag">WTI</span>
+            <span class="sent-badge neu">+0.12</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Live Feed (right column) -->
+    <div class="card live-card">
+      <div class="card-header">
+        <div class="card-title">
+          <div class="icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 11a9 9 0 0 1 9 9M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>
+          </div>
+          <h3>Live Feed</h3>
+          <span class="count">42</span>
+        </div>
+      </div>
+      <div class="watch-box">
+        <div class="watch-label">Watchlist</div>
+        <div class="watch-tags">
+          <span class="watch-tag">NATO <span class="x">×</span></span>
+          <span class="watch-tag">Fed <span class="x">×</span></span>
+          <span class="watch-tag">NVDA <span class="x">×</span></span>
+          <span class="watch-tag">Brent <span class="x">×</span></span>
+          <span class="watch-tag">OPEC <span class="x">×</span></span>
+        </div>
+        <input class="watch-add" placeholder="Add entity, ticker, or keyword…" />
+      </div>
+      <div class="live-list">
+        <div class="live-item">
+          <div class="live-strip" style="background:var(--cyan)"></div>
+          <div class="live-body">
+            <div class="live-title">Red Sea crisis: Major shipping companies reroute around Cape of Good Hope</div>
+            <div class="live-meta"><span class="src">Reuters</span><div class="cred" style="background:var(--green)"></div><span>2m</span></div>
+          </div>
+        </div>
+        <div class="live-item">
+          <div class="live-strip" style="background:var(--cyan)"></div>
+          <div class="live-body">
+            <div class="live-title">Federal Reserve officials signal patience on rate cuts amid sticky inflation</div>
+            <div class="live-meta"><span class="src">Bloomberg</span><div class="cred" style="background:var(--green)"></div><span>8m</span></div>
+          </div>
+        </div>
+        <div class="live-item">
+          <div class="live-strip" style="background:var(--orange)"></div>
+          <div class="live-body">
+            <div class="live-title">r/worldnews: Houthi spokesperson announces escalation in Red Sea operations</div>
+            <div class="live-meta"><span class="src">Reddit</span><div class="cred" style="background:var(--yellow)"></div><span>14m</span></div>
+          </div>
+        </div>
+        <div class="live-item">
+          <div class="live-strip" style="background:var(--cyan)"></div>
+          <div class="live-body">
+            <div class="live-title">Nvidia Blackwell architecture promises 2.5x leap in AI training performance</div>
+            <div class="live-meta"><span class="src">Ars Technica</span><div class="cred" style="background:var(--green)"></div><span>19m</span></div>
+          </div>
+        </div>
+        <div class="live-item">
+          <div class="live-strip" style="background:var(--purple)"></div>
+          <div class="live-body">
+            <div class="live-title">OPEC+ Joint Ministerial Monitoring Committee recommends extending voluntary cuts</div>
+            <div class="live-meta"><span class="src">S&P Global</span><div class="cred" style="background:var(--green)"></div><span>31m</span></div>
+          </div>
+        </div>
+        <div class="live-item">
+          <div class="live-strip" style="background:var(--cyan)"></div>
+          <div class="live-body">
+            <div class="live-title">Lockheed Martin awarded $4.2 billion contract for THAAD missile defense</div>
+            <div class="live-meta"><span class="src">Defense News</span><div class="cred" style="background:var(--green)"></div><span>47m</span></div>
+          </div>
+        </div>
+        <div class="live-item">
+          <div class="live-strip" style="background:var(--cyan)"></div>
+          <div class="live-body">
+            <div class="live-title">Bank of Japan ends negative interest rates, first hike in 17 years</div>
+            <div class="live-meta"><span class="src">Financial Times</span><div class="cred" style="background:var(--green)"></div><span>1h</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Alert Panel -->
+    <div class="card alert-card">
+      <div class="card-header">
+        <div class="card-title">
+          <div class="icon" style="background:rgba(252,97,128,0.12);color:var(--red)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+          </div>
+          <h3>Alerts</h3>
+          <span class="count" style="background:rgba(252,97,128,0.1);border-color:rgba(252,97,128,0.2);color:var(--red)">3</span>
+        </div>
+      </div>
+      <div style="overflow-y:auto;flex:1">
+        <div class="alert-item">
+          <div class="alert-dot" style="background:var(--v-crit);color:var(--v-crit)"></div>
+          <div class="alert-body">
+            <div class="alert-name">NATO Watch</div>
+            <div class="alert-detail">Red Sea shipping disrupted — 3rd vessel targeted</div>
+            <div class="alert-time">3m ago</div>
+          </div>
+        </div>
+        <div class="alert-item">
+          <div class="alert-dot" style="background:var(--v-high);color:var(--v-high)"></div>
+          <div class="alert-body">
+            <div class="alert-name">Fed Rate Monitor</div>
+            <div class="alert-detail">FOMC signals pause; 2yr yield −15bps</div>
+            <div class="alert-time">12m ago</div>
+          </div>
+        </div>
+        <div class="alert-item">
+          <div class="alert-dot" style="background:var(--v-mod);color:var(--v-mod)"></div>
+          <div class="alert-body">
+            <div class="alert-name">NVDA Tracker</div>
+            <div class="alert-detail">Blackwell announced; premarket +6.3%</div>
+            <div class="alert-time">24m ago</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Morning Briefing -->
+    <div class="card intel-card">
+      <div class="card-header">
+        <div class="card-title">
+          <div class="icon" style="background:rgba(183,148,244,0.12);color:var(--purple)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32l1.41-1.41"/><circle cx="12" cy="12" r="4"/></svg>
+          </div>
+          <h3>Morning Briefing</h3>
+        </div>
+      </div>
+      <div class="briefing">
+        <div class="briefing-head">Markets brace for Red Sea fallout as Fed pivots dovish</div>
+        <div class="briefing-tldr">Shipping disruptions escalate while central banks signal patience. Energy and defense sectors in focus; tech rally continues on AI capex.</div>
+        <div class="briefing-events">
+          <div class="briefing-event">
+            <div class="vol-bar" style="background:var(--v-crit)"></div>
+            <div class="txt">Red Sea crisis — 7 sources, escalating</div>
+            <div class="v" style="color:var(--v-crit)">0.92</div>
+          </div>
+          <div class="briefing-event">
+            <div class="vol-bar" style="background:var(--v-high)"></div>
+            <div class="txt">Fed dovish pivot — yields dropping</div>
+            <div class="v" style="color:var(--v-high)">0.78</div>
+          </div>
+          <div class="briefing-event">
+            <div class="vol-bar" style="background:var(--v-mod)"></div>
+            <div class="txt">Nvidia Blackwell — AI rally continues</div>
+            <div class="v" style="color:var(--v-mod)">0.55</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ═══ TICKER ═══ -->
+  <div class="ticker">
+    <div class="tk-label"><div class="dot"></div>LIVE</div>
+    <div class="tk-track">
+      <div class="tk-item"><span class="src">REUTERS</span><span class="txt">Red Sea shipping halted</span><span class="v h">92%</span></div>
+      <div class="tk-item"><span class="src">BLOOMBERG</span><span class="txt">Fed signals pause</span><span class="v h">78%</span></div>
+      <div class="tk-item"><span class="src">ARSTECHNICA</span><span class="txt">Nvidia Blackwell announced</span><span class="v m">55%</span></div>
+      <div class="tk-item"><span class="src">FT</span><span class="txt">BOJ ends negative rates</span><span class="v c">22%</span></div>
+      <div class="tk-item"><span class="src">DEFENSE</span><span class="txt">LMT $4.2B THAAD contract</span><span class="v m">48%</span></div>
+      <div class="tk-item"><span class="src">S&P GLOBAL</span><span class="txt">OPEC+ extends cuts</span><span class="v c">31%</span></div>
+      <!-- duplicate -->
+      <div class="tk-item"><span class="src">REUTERS</span><span class="txt">Red Sea shipping halted</span><span class="v h">92%</span></div>
+      <div class="tk-item"><span class="src">BLOOMBERG</span><span class="txt">Fed signals pause</span><span class="v h">78%</span></div>
+      <div class="tk-item"><span class="src">ARSTECHNICA</span><span class="txt">Nvidia Blackwell announced</span><span class="v m">55%</span></div>
+      <div class="tk-item"><span class="src">FT</span><span class="txt">BOJ ends negative rates</span><span class="v c">22%</span></div>
+      <div class="tk-item"><span class="src">DEFENSE</span><span class="txt">LMT $4.2B THAAD contract</span><span class="v m">48%</span></div>
+      <div class="tk-item"><span class="src">S&P GLOBAL</span><span class="txt">OPEC+ extends cuts</span><span class="v c">31%</span></div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

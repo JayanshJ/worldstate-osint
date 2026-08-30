@@ -101,6 +101,7 @@ async def invite_member(
         hashed_password=hash_password(body.password),
         org_id=user.org_id,
         is_admin=False,
+        is_approved=True,  # invited by an org admin → pre-approved, can log in immediately
     )
     db.add(new_user)
     await db.commit()

@@ -31,16 +31,36 @@ from app.models.article import ArticleEmbedding, ClusterMember, EventCluster, Ra
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
+# Lightweight in-process observability so a persistent AI outage doesn't look
+# identical to "no new clusters". The /stats endpoint can surface these.
+_intelligence_failures = 0
+
+
+async def _safe_evaluate_alerts(cluster_id: str) -> None:
+    """Fire-and-forget wrapper for alert evaluation."""
+    try:
+        from app.intelligence.alert_engine import evaluate_alerts
+        await evaluate_alerts(cluster_id)
+    except Exception as ae:
+        logger.warning("Alert evaluation error for %s: %s", cluster_id[:8], ae)
+
+
+def intelligence_failure_count() -> int:
+    """Number of summarization failures since process start (monotonic)."""
+    return _intelligence_failures
+
 
 # ─── Fetch recent un-clustered embeddings ─────────────────────────────────
 
 async def fetch_unclassified_embeddings(
     db: AsyncSession,
-    within_hours: int = 6,
+    within_hours: int | None = None,
 ) -> tuple[list[uuid.UUID], np.ndarray]:
     """
     Returns (article_ids, embedding_matrix) for articles not yet in any cluster.
     """
+    if within_hours is None:
+        within_hours = settings.cluster_lookback_hours
     since = datetime.now(timezone.utc) - timedelta(hours=within_hours)
 
     # Find article IDs that already have a cluster membership
@@ -91,6 +111,14 @@ def run_hdbscan(embeddings: np.ndarray) -> np.ndarray:
 
 
 # ─── Centroid Similarity ──────────────────────────────────────────────────
+
+def _normalize(v: np.ndarray) -> np.ndarray:
+    """L2-normalize a vector to unit length (matches pgvector cosine)."""
+    norm = np.linalg.norm(v)
+    if norm == 0:
+        return v
+    return v / norm
+
 
 def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     dot = np.dot(a, b)
@@ -171,20 +199,39 @@ async def add_members_to_cluster(
     article_ids: list[uuid.UUID],
     centroid: np.ndarray,
     embeddings: np.ndarray,
-) -> None:
+) -> int:
+    """Insert cluster memberships idempotently.
+
+    Uses ON CONFLICT DO NOTHING so re-processing the same articles (e.g. across
+    overlapping cluster cycles) is safe and never raises on the
+    UNIQUE(cluster_id, article_id) constraint. Returns the number of rows
+    actually inserted (i.e. newly added members).
+
+    Errors propagate to the caller — we do NOT rollback here, because a
+    mid-batch rollback would corrupt the cluster's member_count vs the real
+    ClusterMember rows. The caller handles transaction boundaries.
+    """
+    if not article_ids:
+        return 0
+
+    rows = []
     for i, article_id in enumerate(article_ids):
         vec = embeddings[i]
         distance = float(1 - cosine_similarity(vec, centroid))
-        member = ClusterMember(
-            cluster_id=cluster_id,
-            article_id=article_id,
-            distance=distance,
-        )
-        db.add(member)
-    try:
-        await db.flush()
-    except Exception:
-        await db.rollback()
+        rows.append({"cluster_id": cluster_id, "article_id": article_id, "distance": distance})
+
+    result = await db.execute(
+        text(
+            """
+            INSERT INTO cluster_members (cluster_id, article_id, distance)
+            VALUES (:cluster_id, :article_id, :distance)
+            ON CONFLICT (cluster_id, article_id) DO NOTHING
+            """
+        ),
+        rows,
+    )
+    # asyncpg via SQLAlchemy: rowcount reflects inserted rows (conflicts excluded)
+    return max(0, result.rowcount or 0)
 
 
 # ─── Intelligence Trigger ─────────────────────────────────────────────────
@@ -198,10 +245,11 @@ async def maybe_trigger_intelligence(
     Uses weighted_score (sum of credibility scores) instead of raw count
     so a single Reuters article can trigger faster than 10 Reddit posts.
     """
-    # Weighted threshold: e.g. 2 Reuters articles (2 * 0.93 ≈ 1.86)
-    # or 2 CoinDesk + 1 CoinTelegraph (0.78+0.74+0.74 ≈ 2.26)
-    # or 3 TechCrunch/Verge (0.82+0.81+0.81 ≈ 2.44)
-    WEIGHTED_THRESHOLD = 1.8
+    # Single source of truth: settings.cluster_intelligence_weighted_threshold.
+    # Examples (each source's credibility ≈ 0.7–0.97):
+    #   2 Reuters (2 * 0.93 ≈ 1.86) — clears the 1.8 default
+    #   3 regional outlets (≈ 0.74 * 3 ≈ 2.22)
+    WEIGHTED_THRESHOLD = settings.cluster_intelligence_weighted_threshold
 
     if cluster.weighted_score < WEIGHTED_THRESHOLD:
         return
@@ -251,20 +299,34 @@ async def maybe_trigger_intelligence(
         })
 
         # Evaluate alert watches against this cluster (fire-and-forget)
-        try:
-            from app.intelligence.alert_engine import evaluate_alerts
-            await evaluate_alerts(str(cluster.id))
-        except Exception as ae:
-            logger.warning("Alert evaluation error: %s", ae)
+        asyncio.create_task(_safe_evaluate_alerts(str(cluster.id)))
 
     except Exception as e:
-        logger.error("Intelligence layer failed for cluster %s: %s", str(cluster.id)[:8], e)
+        # Summarization failed (e.g. OpenAI/Gemini outage). Members are already
+        # committed by run_cluster_cycle, so the cluster is still visible — it
+        # just stays unlabeled until a future cycle retries. Bump the failure
+        # counter so operators can distinguish an AI outage from "no clusters".
+        global _intelligence_failures
+        _intelligence_failures += 1
+        logger.error(
+            "Intelligence layer failed for cluster %s (total failures=%d): %s",
+            str(cluster.id)[:8], _intelligence_failures, e, exc_info=True,
+        )
 
 
 # ─── Drift: Expire old clusters ───────────────────────────────────────────
 
 async def expire_stale_clusters(db: AsyncSession) -> None:
-    await db.execute(text("SELECT expire_old_clusters()"))
+    # Pass the configured expiry thresholds so the SQL function stays in sync
+    # with config.py (it used to hardcode 6h / 24h).
+    await db.execute(
+        text("SELECT expire_old_clusters(:soft, :hard, :min_members)"),
+        {
+            "soft": settings.cluster_soft_expire_hours,
+            "hard": settings.cluster_hard_expire_hours,
+            "min_members": 3,
+        },
+    )
     await db.commit()
     logger.debug("Drift check complete — stale clusters expired")
 
@@ -295,6 +357,9 @@ async def run_cluster_cycle() -> None:
             cluster_ids = [article_ids[i] for i, m in enumerate(mask) if m]
             cluster_vecs = embeddings[mask]
             centroid = cluster_vecs.mean(axis=0)
+            # Re-normalize centroid to unit sphere so pgvector cosine
+            # distance <=> matches the comparison semantics.
+            centroid = _normalize(centroid)
 
             # Fetch credibility scores for weighted score
             result = await db.execute(
@@ -307,26 +372,50 @@ async def run_cluster_cycle() -> None:
             # Match against existing cluster or create new
             existing = await find_existing_cluster(db, centroid)
             if existing:
-                # Merge into existing
-                new_member_count = existing.member_count + len(cluster_ids)
-                new_centroid = (
-                    np.array(existing.centroid) * existing.member_count + centroid * len(cluster_ids)
-                ) / new_member_count  # weighted running mean
-                new_score = existing.weighted_score + weighted_score
-
-                await add_members_to_cluster(db, existing.id, cluster_ids, centroid, cluster_vecs)
-                await update_cluster_centroid(db, existing, new_centroid, new_member_count, new_score)
+                # Merge into existing — insert idempotently, then atomically bump
+                # member_count/weighted_score by the number actually newly added.
+                inserted = await add_members_to_cluster(
+                    db, existing.id, cluster_ids, centroid, cluster_vecs
+                )
+                if inserted:
+                    new_centroid = _normalize(
+                        (np.array(existing.centroid) * existing.member_count + centroid * len(cluster_ids))
+                        / (existing.member_count + len(cluster_ids))
+                    )
+                    await db.execute(
+                        update(EventCluster)
+                        .where(EventCluster.id == existing.id)
+                        .values(
+                            centroid=new_centroid.tolist(),
+                            member_count=EventCluster.member_count + inserted,
+                            weighted_score=EventCluster.weighted_score + weighted_score,
+                            last_updated_at=datetime.now(timezone.utc),
+                        )
+                    )
                 await db.commit()
-                # Refresh so in-memory object reflects the UPDATE (weighted_score, member_count)
+                # Refresh so in-memory object reflects the UPDATE
                 await db.refresh(existing)
                 await maybe_trigger_intelligence(db, existing)
             else:
                 # Create new cluster
                 cluster = await create_cluster(db, centroid, int(label))
-                await add_members_to_cluster(db, cluster.id, cluster_ids, centroid, cluster_vecs)
-                await update_cluster_centroid(db, cluster, centroid, len(cluster_ids), weighted_score)
+                inserted = await add_members_to_cluster(
+                    db, cluster.id, cluster_ids, centroid, cluster_vecs
+                )
+                # Atomically set the real counts based on inserted rows (not len,
+                # in case a concurrent cycle already added some).
+                await db.execute(
+                    update(EventCluster)
+                    .where(EventCluster.id == cluster.id)
+                    .values(
+                        centroid=centroid.tolist(),
+                        member_count=EventCluster.member_count + inserted,
+                        weighted_score=EventCluster.weighted_score + weighted_score,
+                        last_updated_at=datetime.now(timezone.utc),
+                    )
+                )
                 await db.commit()
-                # Refresh so in-memory object reflects the UPDATE (weighted_score, member_count)
+                # Refresh so in-memory object reflects the UPDATE
                 await db.refresh(cluster)
                 await maybe_trigger_intelligence(db, cluster)
 

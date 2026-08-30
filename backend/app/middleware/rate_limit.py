@@ -31,4 +31,19 @@ def _user_or_ip(request: Request) -> str:
     return get_remote_address(request)
 
 
-limiter = Limiter(key_func=_user_or_ip, default_limits=["300/minute"])
+def _redis_uri() -> str:
+    """Convert the SQLAlchemy/Redis URL to a slowapi-compatible redis URI."""
+    settings = get_settings()
+    url = settings.redis_url
+    # slowapi expects `redis://host:port` format
+    if url.startswith("redis://"):
+        return url
+    return f"redis://localhost:6379"
+
+
+limiter = Limiter(
+    key_func=_user_or_ip,
+    default_limits=["300/minute"],
+    storage_uri=_redis_uri(),
+    headers_enabled=True,
+)

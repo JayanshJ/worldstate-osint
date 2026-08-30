@@ -6,15 +6,17 @@ import re
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import delete as sql_delete, func, select, text
+from sqlalchemy import delete as sql_delete, func, select, update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.security import create_access_token, get_current_user, hash_password, verify_password
 from app.models.organization import Organization
 from app.models.user import User
 
 router = APIRouter()
+settings = get_settings()
 
 
 class RegisterRequest(BaseModel):
@@ -39,9 +41,25 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
 
-    # First user ever → auto-approved admin; everyone else waits for approval
     user_count = (await db.execute(select(func.count()).select_from(User))).scalar() or 0
     is_first = user_count == 0
+
+    # Security: the first user becomes admin. To prevent a stranger hitting
+    # /auth/register on a fresh public deployment from seizing the super-admin
+    # seat, the first claim is restricted to a configured bootstrap email.
+    # In test mode registration stays open so fixtures can create users freely.
+    if is_first and settings.environment != "test":
+        if settings.bootstrap_admin_email and body.email.lower() != settings.bootstrap_admin_email.lower():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Registration is invite-only. Ask an administrator for an invitation.",
+            )
+    elif not is_first and settings.environment != "test":
+        # Self-registration is disabled; users join via POST /api/v1/orgs/me/invite.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Registration is invite-only. Ask an administrator for an invitation.",
+        )
 
     # Auto-create a personal organisation for the new user
     base_slug = _email_to_slug(body.email)
@@ -80,7 +98,7 @@ async def login(form: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = 
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     if not user.is_approved:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Your account is pending approval. An admin will review your request shortly.")
-    return TokenResponse(access_token=create_access_token(sub=user.email))
+    return TokenResponse(access_token=create_access_token(sub=user.email, org_id=user.org_id))
 
 
 @router.get("/me")
@@ -102,9 +120,18 @@ async def delete_me(
     """GDPR right-to-erasure: permanently deletes the calling user's account."""
     from app.models.alert import AlertWatch
     from app.models.organization import Organization
+    from app.models.audit_log import AuditLog
 
-    # Remove the user's alerts
-    await db.execute(sql_delete(AlertWatch).where(AlertWatch.org_id == user.org_id))
+    # Remove only the alerts this user owns (not the whole org's — other
+    # members keep their watches). AlertWatch.created_by is SET NULL on user
+    # delete, so we delete explicitly to honour erasure intent.
+    await db.execute(sql_delete(AlertWatch).where(AlertWatch.created_by == user.id))
+    # Scrub PII from audit logs (GDPR right-to-erasure)
+    await db.execute(
+        sql_update(AuditLog)
+        .where(AuditLog.user_email == user.email)
+        .values(user_email="[deleted]")
+    )
     # Remove the user record
     await db.execute(sql_delete(User).where(User.id == user.id))
     # If the org is now empty, remove it too

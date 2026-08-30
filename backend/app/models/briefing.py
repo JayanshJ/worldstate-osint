@@ -5,7 +5,7 @@ from sqlalchemy import Date, Text, TIMESTAMP
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.database import Base
+from app.core.database import Base, utcnow
 
 
 class MorningBriefing(Base):
@@ -22,4 +22,4 @@ class MorningBriefing(Base):
     top_events:   Mapped[list]      = mapped_column(JSONB, default=list)
     trade_setups: Mapped[list]      = mapped_column(JSONB, default=list)
     macro_theme:  Mapped[str]       = mapped_column(Text, nullable=False, default="")
-    generated_at: Mapped[datetime]  = mapped_column(TIMESTAMP(timezone=True), default=datetime.utcnow)
+    generated_at: Mapped[datetime]  = mapped_column(TIMESTAMP(timezone=True), default=utcnow)

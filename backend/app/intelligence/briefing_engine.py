@@ -79,7 +79,7 @@ async def _generate_briefing_content(clusters: list[EventCluster]) -> dict | Non
                 model_name=settings.gemini_model,
                 system_instruction=BRIEFING_PROMPT,
                 generation_config=genai.GenerationConfig(
-                    temperature=0.2,
+                    temperature=1,
                     max_output_tokens=2048,
                     response_mime_type="application/json",
                 ),
@@ -99,8 +99,8 @@ async def _generate_briefing_content(clusters: list[EventCluster]) -> dict | Non
                     {"role": "system", "content": BRIEFING_PROMPT},
                     {"role": "user",   "content": prompt},
                 ],
-                temperature=0.2,
-                max_tokens=2048,
+                temperature=1,
+                max_completion_tokens=2048,
                 response_format={"type": "json_object"},
             )
             raw = resp.choices[0].message.content
@@ -128,7 +128,6 @@ async def _send_briefing_emails(briefing: MorningBriefing, db: AsyncSession) -> 
 
     result = await db.execute(select(User).where(User.is_approved == True))
     users = result.scalars().all()
-
     setups_html = ""
     for s in (briefing.trade_setups or [])[:5]:
         dir_color = "#22c55e" if s.get("direction") == "LONG" else "#ef4444" if s.get("direction") == "SHORT" else "#eab308"
@@ -186,10 +185,6 @@ async def _send_briefing_emails(briefing: MorningBriefing, db: AsyncSession) -> 
   <a href="{settings.app_base_url}" style="display:inline-block;margin-top:20px;background:#00d4ff;color:#08090f;padding:10px 20px;font-size:11px;font-weight:700;letter-spacing:2px;text-decoration:none;">
     OPEN WORLDSTATE →
   </a>
-
-  <p style="color:#374151;font-size:10px;margin-top:24px;">
-    NOT FINANCIAL ADVICE · AI-generated research for informational purposes only.
-  </p>
 </body>
 </html>"""
 
@@ -198,6 +193,12 @@ async def _send_briefing_emails(briefing: MorningBriefing, db: AsyncSession) -> 
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
     logger.info("Briefing emails sent to %d users", len(tasks))
+
+
+async def _send_briefing_emails_safe(briefing: MorningBriefing) -> None:
+    """Wrapper that properly manages the DB session lifecycle."""
+    async with AsyncSessionLocal() as db:
+        await _send_briefing_emails(briefing, db)
 
 
 async def generate_morning_briefing(db: AsyncSession, force: bool = False) -> MorningBriefing | None:
@@ -263,7 +264,7 @@ async def generate_morning_briefing(db: AsyncSession, force: bool = False) -> Mo
     logger.info("Morning briefing generated: %s", briefing.headline)
 
     # Send email to all users
-    asyncio.create_task(_send_briefing_emails(briefing, AsyncSessionLocal()))
+    asyncio.create_task(_send_briefing_emails_safe(briefing))
     return briefing
 
 

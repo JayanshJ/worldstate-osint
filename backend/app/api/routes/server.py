@@ -117,13 +117,17 @@ async def _ping_site(url: str) -> dict:
         return {"url": url, "up": False, "error": str(e)}
 
 
+async def _noop_ping() -> dict:
+    return {"up": None}
+
+
 @router.get("/status")
 async def server_status(admin: Annotated[User, Depends(require_admin)]):
     domain = os.getenv("DOMAIN", "")
     system, containers, ping = await asyncio.gather(
         asyncio.to_thread(_get_system_metrics),
         asyncio.to_thread(_get_containers),
-        _ping_site(f"https://{domain}/health") if domain else asyncio.coroutine(lambda: {"up": None})(),
+        _ping_site(f"https://{domain}/health") if domain else _noop_ping(),
     )
     ssl_info = await asyncio.to_thread(_get_ssl_info, domain) if domain else {}
     return {

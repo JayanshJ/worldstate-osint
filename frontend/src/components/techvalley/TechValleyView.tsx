@@ -9,6 +9,7 @@
  */
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useLocation } from 'wouter'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Cpu, DollarSign, Newspaper, RefreshCw, ExternalLink, Sparkles, ChevronDown, ChevronUp } from 'lucide-react'
 import { api } from '@/lib/api'
@@ -496,6 +497,7 @@ interface Props {
 }
 
 export function TechValleyView({ onClusterSelect }: Props) {
+  const [, navigate] = useLocation()
   const [allClusters, setAllClusters] = useState<EventCluster[]>([])
   const [articles,    setArticles]    = useState<RawArticle[]>([])
   const [loading,     setLoading]     = useState(true)
@@ -571,7 +573,7 @@ export function TechValleyView({ onClusterSelect }: Props) {
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden">
       {/* Stock strip */}
-      <StockStrip onTickerClick={ticker => (window.location.href = `/splc/${ticker}`)} />
+      <StockStrip onTickerClick={ticker => navigate(`/splc/${ticker}`)} />
 
       {/* AI Summary */}
       {svClusters.length > 0 && <SVAISummary clusters={svClusters} />}

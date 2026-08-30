@@ -71,44 +71,45 @@ async def _yf_fetch(ticker: str, interval: str, yf_range: str,
 
 def _yf_change(meta: dict) -> float | None:
     """Compute daily % change from Yahoo Finance meta.
-    Falls back to previousClose if regularMarketChangePercent is None.
+    Uses previousClose (yesterday's close) — NOT chartPreviousClose
+    (which is the close at the start of the range query, e.g. 5 days ago).
     """
     chp = meta.get("regularMarketChangePercent")
     if chp is not None:
         return round(float(chp), 2)
     price = meta.get("regularMarketPrice")
-    prev  = meta.get("chartPreviousClose") or meta.get("previousClose")
+    # previousClose = yesterday's close (correct for daily change)
+    # chartPreviousClose = close at start of range query (wrong for daily)
+    prev = meta.get("previousClose") or meta.get("chartPreviousClose")
     if price and prev and float(prev) > 0:
         return round((float(price) - float(prev)) / float(prev) * 100, 2)
     return None
 
 
 async def _refresh_spot() -> None:
-    """Refresh all spot prices from gold-api.com + Yahoo Finance."""
+    """Refresh all spot prices. Uses Yahoo Finance as primary source for
+    consistency with chart data. Falls back to gold-api.com for precious
+    metals if Yahoo is unavailable."""
     async with httpx.AsyncClient() as client:
         for key, gold_sym, yf_ticker, fmt in _COMMODITIES:
             try:
-                if gold_sym:
-                    # gold-api.com for precious metals
+                # Primary: Yahoo Finance (same source as charts → no mismatch)
+                try:
+                    result  = await _yf_fetch(yf_ticker, "1m", "1d", client)
+                    meta    = result["meta"]
+                    current = float(meta["regularMarketPrice"])
+                    change  = _yf_change(meta)
+                except Exception:
+                    # Fallback: gold-api.com for precious metals
+                    if not gold_sym:
+                        raise
                     r = await client.get(
                         f"https://api.gold-api.com/price/{gold_sym}",
                         headers=HEADERS, timeout=10, follow_redirects=True,
                     )
                     r.raise_for_status()
-                    data    = r.json()
-                    current = float(data["price"])
-                    # gold-api doesn't return % change — get it from Yahoo
-                    try:
-                        result  = await _yf_fetch(yf_ticker, "1m", "5d", client)
-                        change  = _yf_change(result["meta"])
-                    except Exception:
-                        change = None
-                else:
-                    # Yahoo Finance for WTI
-                    result  = await _yf_fetch(yf_ticker, "1m", "5d", client)
-                    meta    = result["meta"]
-                    current = float(meta["regularMarketPrice"])
-                    change  = _yf_change(meta)
+                    current = float(r.json()["price"])
+                    change  = None  # gold-api doesn't provide % change
 
                 _spot_cache[key] = {
                     "price":  _fmt_price(current, fmt),

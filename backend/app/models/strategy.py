@@ -5,14 +5,14 @@ from sqlalchemy import Boolean, Float, String, Text, TIMESTAMP
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.database import Base
+from app.core.database import Base, utcnow
 
 
 class MarketStrategy(Base):
     __tablename__ = "market_strategies"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    generated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=datetime.utcnow)
+    generated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=utcnow)
     expires_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
 
     # AI-generated content

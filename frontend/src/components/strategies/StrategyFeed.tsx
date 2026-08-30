@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { RefreshCw, TrendingUp, Loader2, Zap, BarChart3, AlertTriangle, X } from 'lucide-react'
+import { RefreshCw, TrendingUp, Loader2, Zap, BarChart3 } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { MarketStrategy, AssetClass, StrategyPerformance } from '@/types'
 import { ASSET_CLASS_COLORS } from '@/types'
@@ -93,9 +93,6 @@ export function StrategyFeed({ onClusterSelect }: Props) {
   const [activeFilter,   setActiveFilter]   = useState<FilterTab>('ALL')
   const [lastUpdated,    setLastUpdated]    = useState<Date | null>(null)
   const [performance,    setPerformance]    = useState<StrategyPerformance | null>(null)
-  const [disclaimerDismissed, setDisclaimerDismissed] = useState(
-    () => sessionStorage.getItem('strategy_disclaimer_dismissed') === '1'
-  )
 
   const { lastStrategyUpdate } = useWebSocket()
 
@@ -144,38 +141,9 @@ export function StrategyFeed({ onClusterSelect }: Props) {
   const longCount  = strategies.filter(s => s.direction === 'LONG').length
   const shortCount = strategies.filter(s => s.direction === 'SHORT').length
 
-  const dismissDisclaimer = useCallback(() => {
-    sessionStorage.setItem('strategy_disclaimer_dismissed', '1')
-    setDisclaimerDismissed(true)
-  }, [])
-
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full bg-terminal-bg overflow-hidden">
-
-      {/* ── Legal disclaimer banner ─────────────────────────────────────── */}
-      {!disclaimerDismissed && (
-        <div className="flex-shrink-0 bg-amber-500/15 border-b border-amber-500/30 px-4 py-2.5 flex items-start gap-3">
-          <AlertTriangle size={14} className="text-amber-400 flex-shrink-0 mt-0.5" />
-          <div className="flex-1 min-w-0">
-            <p className="font-mono text-[11px] font-bold text-amber-400 tracking-wider mb-0.5">
-              IMPORTANT — NOT FINANCIAL ADVICE
-            </p>
-            <p className="font-mono text-[10px] text-amber-400/70 leading-relaxed">
-              These signals are AI-generated research summaries based on news clustering. They have NOT been backtested,
-              do not represent investment advice, and must not be used as the sole basis for any trading decision.
-              Past signal accuracy does not predict future performance. Consult a qualified financial adviser before investing.
-            </p>
-          </div>
-          <button
-            onClick={dismissDisclaimer}
-            className="flex-shrink-0 text-amber-400/50 hover:text-amber-400 transition-colors"
-            title="Dismiss (this session only)"
-          >
-            <X size={13} />
-          </button>
-        </div>
-      )}
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="flex-shrink-0 border-b border-terminal-border bg-terminal-surface">
@@ -322,9 +290,8 @@ export function StrategyFeed({ onClusterSelect }: Props) {
       {/* ── Footer ─────────────────────────────────────────────────────── */}
       {filtered.length > 0 && (
         <div className="flex-shrink-0 border-t border-terminal-border px-4 py-2 bg-terminal-surface/30 flex items-center gap-2">
-          <AlertTriangle size={9} className="text-amber-500/60 flex-shrink-0" />
           <p className="font-mono text-[9px] text-terminal-dim/60">
-            AI research only · Not financial advice · Live backtested · Refreshes every 15 min
+            Live backtested · Refreshes every 15 min
           </p>
         </div>
       )}

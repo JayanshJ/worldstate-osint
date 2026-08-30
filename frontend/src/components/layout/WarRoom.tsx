@@ -56,7 +56,8 @@ export function WarRoom() {
     clusterParams?.id ?? null,
   )
 
-  const { unreadCount } = useAlerts()
+  const alerts = useAlerts()
+  const { unreadCount } = alerts
   const { show: showTour, complete: completeTour } = useOnboarding()
 
   const viewMode = pathToView(location)
@@ -280,6 +281,7 @@ export function WarRoom() {
             key="alerts"
             onClose={() => setAlertsOpen(false)}
             onClusterSelect={openCluster}
+            alerts={alerts}
           />
         )}
       </AnimatePresence>

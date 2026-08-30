@@ -162,6 +162,9 @@ export function WorldMapView({ onClusterSelect }: Props) {
   const [hoveredAircraft,  setHoveredAircraft]   = useState<AircraftData | null>(null)
   const [aircraftUpdatedAt, setAircraftUpdatedAt] = useState<Date | null>(null)
   const [aircraftAge,      setAircraftAge]       = useState(0)
+  const [selectedAircraft, setSelectedAircraft]  = useState<AircraftData | null>(null)
+  const [prevAircraftIds,  setPrevAircraftIds]   = useState<Set<string>>(new Set())
+  const [newAircraftCount, setNewAircraftCount]  = useState(0)
 
   // Fetch clusters once on mount
   useEffect(() => {
@@ -178,14 +181,25 @@ export function WorldMapView({ onClusterSelect }: Props) {
       setLoadingLayer(true)
       try {
         const data = await api.live.aircraft()
-        if (!cancelled) { setAircraft(data); setAircraftUpdatedAt(new Date()); setAircraftAge(0) }
+        if (!cancelled) {
+          // Detect new aircraft not in previous cycle
+          const currentIds = new Set(data.map(a => a.icao24))
+          if (prevAircraftIds.size > 0) {
+            const newCount = data.filter(a => !prevAircraftIds.has(a.icao24)).length
+            setNewAircraftCount(newCount)
+          }
+          setPrevAircraftIds(currentIds)
+          setAircraft(data)
+          setAircraftUpdatedAt(new Date())
+          setAircraftAge(0)
+        }
       } catch {}
       finally { if (!cancelled) setLoadingLayer(false) }
     }
     doFetch()
     const iv = setInterval(doFetch, 30_000)
     return () => { cancelled = true; clearInterval(iv) }
-  }, [showAircraft])
+  }, [showAircraft, prevAircraftIds])
 
   // Tick "updated X s ago" every second
   useEffect(() => {
@@ -246,18 +260,39 @@ export function WorldMapView({ onClusterSelect }: Props) {
   const handleCountryClick = useCallback((name: string) => {
     setSelectedCountry(name)
     setSelectedVessel(null)
+    setSelectedAircraft(null)
     setSearchResult(null)   // clear any previous vessel search
   }, [])
 
   const handleVesselClick = useCallback((zone: VesselZone) => {
     setSelectedVessel(zone)
     setSelectedCountry(null)
+    setSelectedAircraft(null)
     openSearch(zone.query)
+  }, [openSearch])
+
+  const handleAircraftClick = useCallback((ac: AircraftData) => {
+    setSelectedAircraft(ac)
+    setSelectedCountry(null)
+    setSelectedVessel(null)
+    // Search for clusters related to this aircraft's reason/location
+    const query = ac.reason.includes('Black Sea') ? 'Black Sea Ukraine'
+      : ac.reason.includes('Gaza') ? 'Gaza Israel'
+      : ac.reason.includes('Yemen') ? 'Yemen Houthi'
+      : ac.reason.includes('Taiwan') ? 'Taiwan China'
+      : ac.reason.includes('Korean') ? 'Korea'
+      : ac.reason.includes('Syria') || ac.reason.includes('Iraq') ? 'Syria Iraq'
+      : ac.reason.includes('Myanmar') ? 'Myanmar'
+      : ac.reason.includes('Mali') || ac.reason.includes('Sahel') ? 'Mali Sahel'
+      : ac.category === 'military' ? `${ac.country} military`
+      : ac.reason
+    openSearch(query)
   }, [openSearch])
 
   const closePanel = useCallback(() => {
     setSelectedCountry(null)
     setSelectedVessel(null)
+    setSelectedAircraft(null)
     setSearchResult(null)
   }, [])
 
@@ -267,7 +302,21 @@ export function WorldMapView({ onClusterSelect }: Props) {
       .slice(0, 8)
   }, [countryActivity])
 
-  const panelOpen = !!selectedCountry || !!selectedVessel
+  const panelOpen = !!selectedCountry || !!selectedVessel || !!selectedAircraft
+
+  // Choke point disruption detection: check if any HIGH/CRIT cluster is near
+  function isChokePointDisrupted(zone: VesselZone): boolean {
+    return clusters.some(c => {
+      if (c.volatility < 0.55) return false
+      const text = [
+        c.label ?? '',
+        ...(c.bullets ?? []),
+        ...(c.entities?.locations ?? []),
+      ].join(' ').toLowerCase()
+      return text.includes(zone.name.toLowerCase().split(' ')[0]) ||
+             text.includes(zone.query.toLowerCase().split(' ')[0])
+    })
+  }
 
   return (
     <div className="flex h-full w-full relative overflow-hidden" style={{ background: '#000000' }}>
@@ -334,13 +383,22 @@ export function WorldMapView({ onClusterSelect }: Props) {
             </Geographies>
 
             {/* ── Vessel zone markers ──────────────────────────────────── */}
-            {showVessels && vessels.map(zone => (
+            {showVessels && vessels.map(zone => {
+              const disrupted = isChokePointDisrupted(zone)
+              return (
               <Marker
                 key={zone.id}
                 coordinates={[zone.lon, zone.lat]}
               >
                 <g style={{ cursor: 'pointer' }} onClick={() => handleVesselClick(zone)}>
-                  {/* Outer pulsing ring */}
+                  {/* Pulsing disruption ring */}
+                  {disrupted && (
+                    <circle r={12 / zoom} fill="none" stroke={zone.color} strokeWidth={1.5 / zoom} opacity={0.5}>
+                      <animate attributeName="r" from={5 / zoom} to={14 / zoom} dur="2s" repeatCount="indefinite" />
+                      <animate attributeName="opacity" from={0.7} to={0} dur="2s" repeatCount="indefinite" />
+                    </circle>
+                  )}
+                  {/* Outer ring */}
                   <circle
                     r={6 / zoom}
                     fill="none"
@@ -358,21 +416,32 @@ export function WorldMapView({ onClusterSelect }: Props) {
                   />
                 </g>
               </Marker>
-            ))}
+              )
+            })}
 
             {/* ── Aircraft markers ─────────────────────────────────────── */}
-            {showAircraft && aircraft.map(ac => (
+            {showAircraft && aircraft.map(ac => {
+              const isNew = !prevAircraftIds.has(ac.icao24) && prevAircraftIds.size > 0
+              return (
               <Marker key={ac.icao24} coordinates={[ac.lon, ac.lat]}>
                 <g
                   onMouseEnter={() => setHoveredAircraft(ac)}
                   onMouseLeave={() => setHoveredAircraft(null)}
+                  onClick={() => handleAircraftClick(ac)}
                   style={{ cursor: 'pointer' }}
                 >
                   <circle r={10 / zoom} fill="transparent" />
-                  <PlanePath heading={ac.heading} zoom={zoom} hovered={hoveredAircraft?.icao24 === ac.icao24} category={ac.category} />
+                  {isNew && (
+                    <circle r={6 / zoom} fill="none" stroke="#fff" strokeWidth={1.5 / zoom} opacity={0.6}>
+                      <animate attributeName="r" from={3 / zoom} to={8 / zoom} dur="1.5s" repeatCount="indefinite" />
+                      <animate attributeName="opacity" from={0.8} to={0} dur="1.5s" repeatCount="indefinite" />
+                    </circle>
+                  )}
+                  <PlanePath heading={ac.heading} zoom={zoom} hovered={hoveredAircraft?.icao24 === ac.icao24 || selectedAircraft?.icao24 === ac.icao24} category={ac.category} />
                 </g>
               </Marker>
-            ))}
+              )
+            })}
           </ZoomableGroup>
         </ComposableMap>
 
@@ -444,6 +513,12 @@ export function WorldMapView({ onClusterSelect }: Props) {
                 </div>
               )
             })}
+            {newAircraftCount > 0 && (
+              <div className="flex items-center gap-1.5 text-[9px] font-mono pt-1 border-t border-terminal-border/50">
+                <span className="w-1.5 h-1.5 rounded-full bg-white flex-shrink-0 animate-pulse" />
+                <span className="text-terminal-accent">{newAircraftCount} NEW</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -533,7 +608,7 @@ export function WorldMapView({ onClusterSelect }: Props) {
         {!panelOpen && (
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 pointer-events-none">
             <span className="font-mono text-[10px] text-terminal-dim/60">
-              Click any country for intel · Toggle layers top-right · Scroll to zoom
+              Click a country, aircraft, or choke point for intel · Toggle layers top-right · Scroll to zoom
             </span>
           </div>
         )}
@@ -543,7 +618,7 @@ export function WorldMapView({ onClusterSelect }: Props) {
       <AnimatePresence>
         {panelOpen && (
           <motion.div
-            key={selectedVessel?.id ?? selectedCountry ?? 'panel'}
+            key={selectedAircraft?.icao24 ?? selectedVessel?.id ?? selectedCountry ?? 'panel'}
             initial={{ x: 380, opacity: 0 }}
             animate={{ x: 0,   opacity: 1 }}
             exit={{   x: 380, opacity: 0 }}
@@ -555,9 +630,25 @@ export function WorldMapView({ onClusterSelect }: Props) {
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="font-mono text-[9.5px] tracking-[0.18em] uppercase text-terminal-dim mb-0.5">
-                    {selectedVessel ? '§ Choke point' : '§ Region intel'}
+                    {selectedAircraft ? '§ Aircraft track' : selectedVessel ? '§ Choke point' : '§ Region intel'}
                   </p>
-                  {selectedVessel ? (
+                  {selectedAircraft ? (
+                    <div className="flex items-center gap-2">
+                      <h2 className="font-serif text-[18px] leading-none tracking-[-0.01em] text-terminal-text truncate">
+                        {selectedAircraft.callsign?.trim() || selectedAircraft.icao24.toUpperCase()}
+                      </h2>
+                      <span
+                        className="text-[9px] font-mono px-1.5 py-0.5 border flex-shrink-0"
+                        style={{
+                          color:       AIRCRAFT_COLORS[selectedAircraft.category] ?? '#00d4ff',
+                          borderColor: `${AIRCRAFT_COLORS[selectedAircraft.category] ?? '#00d4ff'}44`,
+                          background:  `${AIRCRAFT_COLORS[selectedAircraft.category] ?? '#00d4ff'}15`,
+                        }}
+                      >
+                        {selectedAircraft.category.toUpperCase()}
+                      </span>
+                    </div>
+                  ) : selectedVessel ? (
                     <div className="flex items-center gap-2">
                       <h2 className="font-serif text-[18px] leading-none tracking-[-0.01em] text-terminal-text truncate">
                         {selectedVessel.name}
@@ -595,13 +686,71 @@ export function WorldMapView({ onClusterSelect }: Props) {
               </div>
             </div>
 
-            {/* Vessel significance banner */}
+            {/* Aircraft flight data banner */}
+            {selectedAircraft && (
+              <div className="flex flex-col gap-2 px-4 py-3 border-b border-terminal-border bg-terminal-surface/50 flex-shrink-0">
+                <div className="flex items-center gap-2 text-[10px] font-mono text-terminal-dim">
+                  <Plane size={11} style={{ color: AIRCRAFT_COLORS[selectedAircraft.category] ?? '#00d4ff' }} />
+                  <span className="text-terminal-text">{selectedAircraft.country}</span>
+                  <span className="text-terminal-dim/60">·</span>
+                  <span className="capitalize">{selectedAircraft.reason}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-[10px] font-mono">
+                  <div className="flex flex-col">
+                    <span className="text-terminal-dim/60 text-[9px]">ALTITUDE</span>
+                    <span className="text-terminal-text">{selectedAircraft.altitude > 0 ? `${Math.round(selectedAircraft.altitude * 3.281).toLocaleString()} ft` : 'GND'}</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-terminal-dim/60 text-[9px]">SPEED</span>
+                    <span className="text-terminal-text">{Math.round(selectedAircraft.velocity * 1.944)} kts</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-terminal-dim/60 text-[9px]">HEADING</span>
+                    <span className="text-terminal-text">{Math.round(selectedAircraft.heading)}°</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 text-[9px] font-mono text-terminal-accent/80 bg-terminal-accent/5 px-2 py-1.5 rounded-sm">
+                  <span className="w-1 h-1 rounded-full bg-terminal-accent animate-pulse" />
+                  Scanning for related intelligence clusters...
+                </div>
+              </div>
+            )}
+
+            {/* Vessel significance + commodities banner */}
             {selectedVessel && (
-              <div className="flex items-start gap-2 px-4 py-3 border-b border-terminal-border bg-terminal-surface/50 flex-shrink-0">
-                <AlertTriangle size={11} className="flex-shrink-0 mt-0.5" style={{ color: selectedVessel.color }} />
-                <p className="font-mono text-[10px] text-terminal-dim leading-relaxed">
-                  {selectedVessel.significance}
-                </p>
+              <div className="flex flex-col gap-3 px-4 py-3 border-b border-terminal-border bg-terminal-surface/50 flex-shrink-0">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle size={11} className="flex-shrink-0 mt-0.5" style={{ color: selectedVessel.color }} />
+                  <p className="font-mono text-[10px] text-terminal-dim leading-relaxed">
+                    {selectedVessel.significance}
+                  </p>
+                </div>
+                {isChokePointDisrupted(selectedVessel) && (
+                  <div className="flex items-center gap-2 px-2 py-1.5 bg-red-500/10 border border-red-500/30 rounded-sm">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0 animate-pulse" />
+                    <span className="text-[10px] font-mono text-red-400">ACTIVE DISRUPTION — clusters matching this choke point</span>
+                  </div>
+                )}
+                <div>
+                  <p className="text-[9px] font-mono text-terminal-dim/60 tracking-widest uppercase mb-1.5">Affected Commodities</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedVessel.commodities?.map(c => (
+                      <span key={c} className="text-[9px] font-mono px-1.5 py-0.5 bg-terminal-accent/10 text-terminal-accent border border-terminal-accent/20 rounded-sm">
+                        {c}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[9px] font-mono text-terminal-dim/60 tracking-widest uppercase mb-1.5">Affected Sectors</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedVessel.affected_sectors?.map(s => (
+                      <span key={s} className="text-[9px] font-mono px-1.5 py-0.5 bg-terminal-muted text-terminal-text border border-terminal-border rounded-sm">
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
 

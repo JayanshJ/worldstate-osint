@@ -23,7 +23,7 @@ from typing import Optional
 
 import httpx
 import google.generativeai as genai
-from sqlalchemy import select, update
+from sqlalchemy import select, update, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -58,78 +58,136 @@ _NEWS_FEEDS = [
     ("Yahoo Finance",  "https://finance.yahoo.com/rss/topstories"),
     ("MarketWatch",    "https://feeds.marketwatch.com/marketwatch/topstories/"),
     ("AP Business",    "https://feeds.apnews.com/rss/business"),
-    ("Investopedia",   "https://www.investopedia.com/feedbuilder/feed/getfeed/?feedName=rss_headline"),
+    ("Seeking Alpha",  "https://seekingalpha.com/market_currents.xml"),
+    ("Benzinga",       "https://www.benzinga.com/feed"),
+    ("Investing.com",  "https://www.investing.com/rss/news_25.rss"),
 ]
 
 # ── Broad classifiers (match common headline language) ────────────────────────
 
 _RE_FLAGS = re.IGNORECASE
 
-# Analyst actions
+# Analyst actions — must mention a rating action verb
 _UPGRADE_RE = re.compile(
-    r'upgrad|raises? (?:price )?target|initiates? (?:at |with )?(?:buy|overweight|outperform)'
-    r'|starts? coverage|resumes? (?:at )?(?:buy|overweight|outperform)'
-    r'|(?:buy|overweight|outperform) from (?:neutral|hold|sell|underweight)',
+    r'upgrad(?:e[ds]?|ing)|raises? (?:price )?target|initiates? (?:at |with )?(?:buy|overweight|outperform)'
+    r'|starts? coverage (?:at |with )?(?:buy|overweight|outperform)'
+    r'|resumes? (?:at |with )?(?:buy|overweight|outperform)'
+    r'|(?:buy|overweight|outperform) from (?:neutral|hold|sell|underweight|underperform)',
     _RE_FLAGS,
 )
 _DOWNGRADE_RE = re.compile(
-    r'downgrad|cuts? (?:price )?target|lowers? (?:price )?target'
-    r'|(?:neutral|hold|sell|underperform|underweight) from (?:buy|overweight|outperform)'
+    r'downgrad(?:e[ds]?|ing)|cuts? (?:price )?target|lowers? (?:price )?target'
+    r'|(?:neutral|hold|sell|underperform|underweight) from (?:buy|overweight|outperform|outperform)'
     r'|price target (?:cut|lower|reduc)',
     _RE_FLAGS,
 )
 
-# Earnings
+# Earnings — must mention actual results vs expectations
 _BEAT_RE = re.compile(
-    r'beat[s]? (?:estimate|expectation|forecast|consensus|wall street)'
-    r'|top[s]? (?:estimate|expectation|forecast)'
+    r'beat[s]? (?:estimate|expectation|forecast|consensus|wall street|analyst)'
+    r'|top[s]? (?:estimate|expectation|forecast|analyst)'
     r'|(?:Q[1-4]|quarter(?:ly)?) (?:earnings?|results?|profit).{0,40}(?:beat|top|exceed|surpass|above)'
     r'|record (?:revenue|profit|earnings|quarter|sales)'
     r'|above (?:estimate|expectation|consensus|forecast)'
-    r'|surpass(?:es)? (?:estimate|expectation)',
+    r'|surpass(?:es)? (?:estimate|expectation)'
+    r'|(?:strong|better(?:.{0,10}than)?|solid|robust).{0,20}(?:earnings?|results?|quarter)'
+    r'|shares? (?:rise|jump|surge|gain).{0,30}(?:earnings?|results?|quarter)',
     _RE_FLAGS,
 )
 _MISS_RE = re.compile(
-    r'miss(?:es)? (?:estimate|expectation|forecast|consensus|wall street)'
+    r'miss(?:es|ing)?\s*.{0,30}(?:estimate|expectation|forecast|consensus|wall street|analyst)'
     r'|falls? short'
     r'|(?:Q[1-4]|quarter(?:ly)?) (?:earnings?|results?|profit).{0,40}(?:miss|below|disappoint|fall short)'
     r'|profit.warning'
     r'|cuts? (?:guidance|outlook|forecast)'
     r'|lowers? (?:guidance|outlook|forecast)'
-    r'|below (?:estimate|expectation|consensus|forecast)',
+    r'|below (?:estimate|expectation|consensus|forecast)'
+    r'|shares? (?:fall|drop|plunge|slide|sink).{0,30}(?:earnings?|results?|quarter)',
     _RE_FLAGS,
 )
 
-# M&A confirmed
+# M&A confirmed — strict: must indicate actual transaction, not "to buy" listicles
 _DEAL_RE = re.compile(
-    r'acquir(?:es?|ed|ing)|merger|acquisition'
-    r'|to buy [A-Z]|buys [A-Z]|purchase[ds]? \w+ for \$'
+    r'acquir(?:es?|ed|ing)\b|merger\b|acquisition\b'
     r'|definitive agreement|takeover (?:bid|offer|deal)'
-    r'|going.private|\$[\d.]+ (?:billion|bn|million) (?:deal|acquisition|merger|buyout)'
-    r'|tender offer|deal (?:valued|worth)',
+    r'|going.private'
+    r'|\$[\d.]+ (?:billion|bn|million) (?:deal|acquisition|merger|buyout|takeover)'
+    r'|tender offer|deal (?:valued|worth)|buyout'
+    r'|completes? (?:acquisition|merger|buyout|takeover)'
+    r'|agrees? to (?:acquire|buy|merge|purchase)',
     _RE_FLAGS,
 )
 
 # Rumours / unconfirmed
 _RUMOUR_RE = re.compile(
     r'report(?:ed)?ly|sources? (?:say|said|familiar|close to)'
-    r'|said to (?:be |consider|explore|weigh|mull)'
+    r'|said to (?:be |consider|explore|weigh|mull|fall|have|be )'
     r'|in talks? (?:to |about |with )'
     r'|considering (?:a )?(?:sale|bid|deal|merger|acquisition|buyout)'
     r'|potential (?:deal|merger|buyout|acquisition|takeover|buyer|sale)'
     r'|approach(?:ed|es|ing) (?:about|for|over) (?:a )?(?:deal|bid|merger)'
-    r'|exploring? (?:a )?(?:sale|deal|merger|options?)',
+    r'|exploring? (?:a )?(?:sale|deal|merger|options?)'
+    r'|(?:bid|offer|deal).{0,20}(?:said|reported|rumor|rumour)',
     _RE_FLAGS,
 )
 
-# Dollar amount extractor
-_AMOUNT_RE = re.compile(r'\$\s*(\d+(?:\.\d+)?)\s*(billion|bn|million|mn|[bm])\b', _RE_FLAGS)
+# ── Noise filter — reject headlines that aren't real market signals ──────────
+_NOISE_RE = re.compile(
+    r'\b(?:'
+    # Personal finance / consumer
+    r'retiree|retirement|401\(k\)|ira\s+contribution|pension|social\s+security'
+    r'|pool\s+upgrade|home\s+renovation|contractor|landscap|remodel'
+    r'|coupon|discount|deal\s+of\s+the\s+day|black\s+friday|cyber\s+monday'
+    r'|best\s+(?:credit\s+cards?|savings?\s+accounts?|mortgage|loans?)'
+    r'|how\s+to\s+(?:save|invest|buy|choose|pick|retire|budget)'
+    r'|should\s+you\s+(?:buy|sell|invest|rent|refinance)'
+    r'|what\s+(?:is|are)\s+(?:a\s+)?(?:roth|ira|etf|reit|annuity|bond)'
+    r'|personal\s+finance|budgeting|debt\s+consolidation|net\s+worth'
+    r'|student\s+loan|mortgage\s+rate|refinance|credit\s+score'
+    r'|car\s+insurance|life\s+insurance|health\s+insurance|auto\s+insurance'
+    # Listicles / opinion / clickbait
+    r'\d+\s+(?:best|top|worst)\s+\w+'
+    r'\d+\s+stocks?\s+(?:to\s+buy|down|up|that|you|for)'
+    r'(?:best|top)\s+\w+\s+to\s+(?:buy|sell|invest|watch)'
+    r'(?:buy|sell)\s+now|stocks?\s+to\s+buy\s+now'
+    r'should\s+i\s+(?:buy|sell|invest)'
+    r'is\s+(?:this|it)\s+(?:a\s+)?(?:signal|buy|sell)'
+    r'what.{0,20}(?:behind|means|next|outlook)'
+    r'why\s+(?:i\s+)?(?:bought|sold|bought|invested)'
+    r'(?:my|our)\s+(?:contractor|pool|home|kitchen|bathroom|roof)'
+    # Non-financial
+    r'(?:recipe|restaurant|travel|hotel|flight|vacation|cruise)'
+    r'(?:sport|nfl|nba|mlb|nhl|soccer|football|baseball|basketball|tennis|golf|olympics?)'
+    r'(?:horoscope|astrology|zodiac)'
+    r'(?:celebrity|gossip|entertainment|movie|tv\s+show|streaming|netflix|spotify|apple\s+tv)'
+    r'(?:weather|forecast\s+for|temperature)'
+    r')\b',
+    re.IGNORECASE,
+)
 
-# Ticker: "(AAPL)" or "NYSE: AAPL"
+# ── Company identifier — headline must mention a real company/ticker ────────
+# This is the key gate: if the headline doesn't reference a specific company
+# (by ticker, Inc/Corp suffix, or known company name), it's not a tradeable signal.
 _TICKER_RE = re.compile(
     r'(?:NYSE|NASDAQ|AMEX):\s*([A-Z]{1,5})'
+    r'|\$([A-Z]{2,5})\b'
     r'|\(([A-Z]{2,5})\)(?=[\s,.])',
     re.ASCII,
+)
+_TICKER_CTX_RE = re.compile(
+    r'\b([A-Z]{2,5})\s+(?:stock|shares|earnings)\b',
+    re.ASCII,
+)
+# Company suffixes that indicate a real corporate entity
+_COMPANY_RE = re.compile(
+    r'\b(?:'
+    r'(?:Inc\.?|Corp\.?|Corporation|Co\.?|Company|Ltd\.?|Limited|LLC|LP)'
+    r'|(?:Holdings|Group|Technologies?|Pharmaceuticals?|Therapeutics?)'
+    r'|(?:Bancorp|Bancshares|Bank|Financial|Capital|Partners?)'
+    r'|(?:Energy|Industries?|Materials|Chemicals?|Biotech|Bio)'
+    r'|(?:Motors?|Airlines?|Airways?|Aerospace|Defense|Solutions?)'
+    r')\b',
+    re.IGNORECASE,
 )
 
 
@@ -175,7 +233,13 @@ def _amount_bn(text: str) -> Optional[float]:
 
 def _ticker(text: str) -> Optional[str]:
     m = _TICKER_RE.search(text)
-    return next((g for g in (m.groups() if m else []) if g), None)
+    if m:
+        return next((g for g in m.groups() if g), None)
+    # Fallback: "AAPL stock", "NVDA shares"
+    m2 = _TICKER_CTX_RE.search(text)
+    if m2:
+        return m2.group(1)
+    return None
 
 def _strip_html(text: str) -> str:
     return re.sub(r'<[^>]+>', ' ', text).strip()
@@ -210,13 +274,49 @@ async def _edgar_rss(form_type: str) -> list[dict]:
         return []
 
 
+# ── Non-tradeable entity filter ────────────────────────────────────────────────
+# 8-K filings from these entity types are not actionable trade signals.
+# They're SEC-registered but not publicly traded stocks.
+_NON_TRADEABLE_RE = re.compile(
+    r'\b(?:'
+    r'mortgage\s+trust|receivables\s+trust|automobile\s+receivables|credit\s+card\s+receivables'
+    r'|private\s+credit\s+fund|credit\s+income\s+fund|credit\s+solutions\s+fund'
+    r'|real\s+estate\s+(?:income\s+)?(?:fund|trust)|income\s+property\s+trust'
+    r'|private\s+equity\s+fund|hedge\s+fund|lending\s+fund|capital\s+(?:income|lending)\s+fund'
+    r'|federal\s+home\s+loan\s+bank'
+    r'|commodity\s+index\s+fund|oil\s+fund|gasoline\s+fund|natural\s+gas\s+fund'
+    r'|commodity\s+index\s+funds\s+trust'
+    r'|asset\s+backed\s+securities|ABS\s+trust'
+    r'|merger\s+corp\.?(?:\s|$)|SPAC\b'
+    r'|enhanced\s+corporate\s+lending'
+    r'|private\s+capital\s+income'
+    r')\b',
+    re.IGNORECASE,
+)
+
+# Suffixes / entity types that indicate non-public entities
+_NON_PUBLIC_SUFFIX_RE = re.compile(
+    r'\b(?:LLC|L\.P\.|LP|Ltd\.?|Limited)$',
+    re.IGNORECASE,
+)
+
+
+def _is_tradeable(company: str) -> bool:
+    """Filter out non-public entities (trusts, funds, SPACs, private cos)."""
+    if _NON_TRADEABLE_RE.search(company):
+        return False
+    if _NON_PUBLIC_SUFFIX_RE.search(company):
+        return False
+    return True
+
+
 # ── Signal fetchers ───────────────────────────────────────────────────────────
 
 async def fetch_edgar_deals() -> list[RawSignal]:
     """
-    ALL 8-K filings from the last 72 h.
-    Classify by Item number in the summary; default to DEAL for any unrecognised item.
-    This always produces signals on any business day.
+    8-K filings from the last 72h that are tradeable public companies.
+    Filters out mortgage trusts, private credit funds, SPACs, and other
+    non-stock entities that flood the feed with noise.
     """
     entries = await _edgar_rss("8-K")
     signals: list[RawSignal] = []
@@ -225,6 +325,12 @@ async def fetch_edgar_deals() -> list[RawSignal]:
     for e in entries:
         pub = _parse_date(e["updated"]) if e["updated"] else _utcnow()
         if pub < cutoff:
+            continue
+
+        company = e["company"]
+
+        # Skip non-tradeable entities (trusts, funds, SPACs, private cos)
+        if not _is_tradeable(company):
             continue
 
         summary  = _strip_html(e["summary"])
@@ -243,18 +349,19 @@ async def fetch_edgar_deals() -> list[RawSignal]:
             sig_type = "RUMOR"
 
         headline = (
-            f"{e['company']} — 8-K: {item_label}"
+            f"{company} — 8-K: {item_label}"
             if item_no else
-            f"{e['company']} — 8-K Material Event"
+            f"{company} — 8-K Material Event"
         )
 
         signals.append(RawSignal(
             signal_type  = sig_type,
-            company      = e["company"][:200],
+            company      = company[:200],
             headline     = headline,
             source_url   = e["url"],
             source_name  = "SEC EDGAR 8-K",
             published_at = pub,
+            ticker       = _ticker(text),
             bullish      = bullish,
             magnitude    = _amount_bn(text),
             extra_text   = summary[:400],
@@ -361,7 +468,10 @@ async def _parse_form4_direction(filing_index_url: str) -> str | None:
 
 
 async def fetch_edgar_insider_sells() -> list[RawSignal]:
-    return []   # Form 4 RSS doesn't distinguish buy/sell; handled above
+    # Sells are already captured by fetch_edgar_insider_buys (which parses
+    # Form 4 direction and returns INSIDER_SELL for disposal transactions).
+    # This no-op exists only for the gather() symmetry in run_signals_cycle.
+    return []
 
 
 # ── News RSS ──────────────────────────────────────────────────────────────────
@@ -407,14 +517,88 @@ async def _rss_items(name: str, url: str) -> list[dict]:
         return []
 
 
+# Dollar amount extractor
+_AMOUNT_RE = re.compile(r'\$\s*(\d+(?:\.\d+)?)\s*(billion|bn|million|mn|[bm])\b', _RE_FLAGS)
+
+# ── Noise filter — headlines that look like signals but aren't ─────────────────
+# Already defined above with the expanded pattern set.
+# This section removed to avoid duplicate _NOISE_RE.
+
+
+# ── Known company names for the company-identifier gate ─────────────────────
+# If a headline mentions any of these, it passes the "is this a real company?" check.
+_KNOWN_COMPANIES = {
+    # Mag 7 + major tech
+    "nvidia", "apple", "google", "alphabet", "microsoft", "amazon", "meta",
+    "tesla", "netflix", "spotify", "uber", "airbnb", "palantir",
+    "salesforce", "oracle", "intel", "amd", "qualcomm", "snowflake",
+    "broadcom", "avgo", "tsmc", "asml", "applied materials", "klac",
+    "anthropic", "openai", "deepmind", "crowdstrike", "okta", "workday",
+    # Finance
+    "jpmorgan", "goldman sachs", "morgan stanley", "bank of america",
+    "wells fargo", "citigroup", "blackrock", "blackstone", "vanguard",
+    "fidelity", "berkshire", "klarna", "paypal", "block", "coinbase",
+    "visa", "mastercard", "allstate", "progressive",
+    # Defense
+    "lockheed martin", "raytheon", "northrop grumman", "boeing",
+    "general dynamics", "l3harris", "hii",
+    # Energy
+    "exxonmobil", "chevron", "shell", "bp", "totalenergies", "conocophillips",
+    # Pharma/Biotech
+    "pfizer", "moderna", "johnson & johnson", "abbvie", "merck", "eli lilly",
+    "biontech", "novartis", "roche", "astrazeneca", "gilead", "regeneron",
+    # Retail/Consumer
+    "walmart", "target", "costco", "home depot", "lowe's", "ulta beauty",
+    "estee lauder", "mcdonald's", "starbucks", "nike", "coca-cola", "pepsi",
+    "advance auto parts", "autozone",
+    # Industrial/Other
+    "general electric", "3m", "caterpillar", "deere", "fedex", "ups",
+    "delta airlines", "united airlines", "american airlines",
+    "take-two", "rockstar", "samsung", "sony", "nintendo",
+    # Crypto companies
+    "binance", "ripple", "coinbase", "kraken", "bitgo", "nydig",
+    "microstrategy", "strategy", "iren", "marathon digital",
+    # Media
+    "fox", "disney", "warner", "paramount", "comcast", "discovery",
+}
+
+
+def _has_company_identifier(title: str, summary: str) -> bool:
+    """Check if the headline references a real company — by ticker, suffix, or known name."""
+    text = f"{title} {summary}".lower()
+    # Ticker pattern: (AAPL), $AAPL, NYSE: AAPL
+    if _TICKER_RE.search(title) or _TICKER_CTX_RE.search(title):
+        return True
+    # Company suffix: Inc, Corp, Ltd, etc.
+    if _COMPANY_RE.search(text):
+        return True
+    # Known company name
+    for name in _KNOWN_COMPANIES:
+        if name in text:
+            return True
+    return False
+
+
 def _classify(title: str, summary: str) -> Optional[str]:
     text = f"{title} {summary}"
-    if _UPGRADE_RE.search(text):  return "ANALYST_UPGRADE"
+
+    # Gate 1: Reject noise (personal finance, listicles, sports, etc.)
+    if _NOISE_RE.search(title):
+        return None
+
+    # Gate 2: Must reference a real company
+    if not _has_company_identifier(title, summary):
+        return None
+
+    # Gate 3: Classify by signal type
+    # Check RUMOR before DEAL — a "takeover bid said to fall through" is a rumour,
+    # not a confirmed deal. Only classify as DEAL if no rumour language is present.
+    if _RUMOUR_RE.search(text):    return "RUMOR"
+    if _UPGRADE_RE.search(text):   return "ANALYST_UPGRADE"
     if _DOWNGRADE_RE.search(text): return "ANALYST_DOWNGRADE"
     if _BEAT_RE.search(text):      return "EARNINGS_BEAT"
     if _MISS_RE.search(text):      return "EARNINGS_MISS"
     if _DEAL_RE.search(text):      return "DEAL"
-    if _RUMOUR_RE.search(text):    return "RUMOR"
     return None
 
 
@@ -485,7 +669,7 @@ def _gemini():
     global _MODEL
     if _MODEL is None and settings.google_api_key:
         genai.configure(api_key=settings.google_api_key)
-        _MODEL = genai.GenerativeModel("gemini-1.5-flash")
+        _MODEL = genai.GenerativeModel(settings.gemini_model)
     return _MODEL
 
 _PROMPT = (
@@ -510,19 +694,41 @@ _PROMPT = (
 )
 
 async def _enrich(sig: RawSignal) -> Optional[str]:
-    model = _gemini()
-    if not model:
-        return None
     prompt = _PROMPT.format(
         type=sig.signal_type, company=sig.company,
         headline=sig.headline, ctx=sig.extra_text[:300] or "—"
     )
-    try:
-        loop = asyncio.get_event_loop()
-        r = await loop.run_in_executor(None, lambda: model.generate_content(prompt))
-        return r.text.strip().strip('"').strip("'")
-    except Exception:
-        return None
+
+    # Try Gemini first
+    model = _gemini()
+    if model:
+        try:
+            loop = asyncio.get_event_loop()
+            r = await loop.run_in_executor(None, lambda: model.generate_content(prompt))
+            text = r.text.strip().strip('"').strip("'")
+            return text if text else None
+        except Exception as e:
+            logger.debug("Gemini enrich failed: %s", e)
+
+    # Fallback: OpenAI
+    if settings.openai_api_key:
+        try:
+            from openai import AsyncOpenAI
+            client = AsyncOpenAI(api_key=settings.openai_api_key)
+            r = await client.chat.completions.create(
+                model=settings.openai_model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=1,
+                max_completion_tokens=200,
+            )
+            text = r.choices[0].message.content
+            if not text or not text.strip():
+                return None
+            return text.strip().strip('"').strip("'")
+        except Exception as e:
+            logger.debug("OpenAI enrich failed: %s", e)
+
+    return None
 
 
 # ── Persistence ───────────────────────────────────────────────────────────────
@@ -545,6 +751,41 @@ async def _persist(db: AsyncSession, raw: list[RawSignal]) -> int:
         saved += 1
     await db.commit()
     return saved
+
+
+async def _backfill_enrichment(db: AsyncSession, limit: int = 20) -> int:
+    """Enrich existing signals that have ai_summary=None.
+    Called after each cycle to gradually fill in missing analyses."""
+    result = await db.execute(
+        select(MarketSignal).where(
+            and_(
+                MarketSignal.ai_summary.is_(None),
+                MarketSignal.is_active.is_(True),
+            )
+        ).limit(limit)
+    )
+    signals = result.scalars().all()
+    if not signals:
+        return 0
+
+    enriched = 0
+    for s in signals:
+        raw = RawSignal(
+            signal_type=s.signal_type,
+            company=s.company or "",
+            headline=s.headline or "",
+            source_url=s.source_url or "",
+            source_name=s.source_name or "",
+            published_at=s.published_at or _utcnow(),
+            extra_text=(s.headline or "")[:400],
+        )
+        ai = await _enrich(raw)
+        if ai:
+            s.ai_summary = ai
+            enriched += 1
+    await db.commit()
+    logger.info("Backfilled %d/%d signal enrichments", enriched, len(signals))
+    return enriched
 
 
 # ── Public entry point ────────────────────────────────────────────────────────
@@ -570,5 +811,7 @@ async def run_signals_cycle() -> int:
             update(MarketSignal).where(MarketSignal.expires_at < _utcnow()).values(is_active=False)
         )
         count = await _persist(db, all_signals)
+        # Backfill missing AI summaries for existing signals
+        await _backfill_enrichment(db)
     logger.info("Signals done — %d new", count)
     return count
