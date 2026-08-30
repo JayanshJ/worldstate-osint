@@ -421,7 +421,7 @@ function FocalDrawer({ company, edges, onClose }: {
                   { label: 'FORWARD P/E',value: profile.forward_pe?.toFixed(1) ?? '—' },
                   { label: 'BETA',       value: profile.beta?.toFixed(2) ?? '—' },
                   { label: 'EMPLOYEES',  value: fmtNumber(profile.employees) },
-                  { label: 'DIV YIELD',  value: profile.dividend_yield > 0 ? fmtPct(profile.dividend_yield) : '—' },
+                  { label: 'DIV YIELD',  value: (profile.dividend_yield ?? 0) > 0 ? fmtPct(profile.dividend_yield) : '—' },
                   { label: 'COUNTRY',    value: profile.country || '—' },
                 ].map(({ label, value, style }) => (
                   <div key={label} className="bg-terminal-surface/50 rounded-sm px-3 py-2">
@@ -1110,7 +1110,7 @@ function EntityDetailDrawer({ edge, onClose }: {
                       { label: 'FORWARD P/E',value: profile.forward_pe?.toFixed(1) ?? '—' },
                       { label: 'BETA',       value: profile.beta?.toFixed(2) ?? '—' },
                       { label: 'EMPLOYEES',  value: fmtNumber(profile.employees) },
-                      { label: 'DIV YIELD',  value: profile.dividend_yield > 0 ? fmtPct(profile.dividend_yield) : '—' },
+                      { label: 'DIV YIELD',  value: (profile.dividend_yield ?? 0) > 0 ? fmtPct(profile.dividend_yield) : '—' },
                       { label: 'EXCHANGE',   value: profile.exchange || '—' },
                     ].map(({ label, value, style }) => (
                       <div key={label} className="bg-terminal-surface/50 rounded-sm px-3 py-2">
