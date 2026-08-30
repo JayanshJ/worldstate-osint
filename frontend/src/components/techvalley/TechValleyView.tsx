@@ -11,7 +11,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useLocation } from 'wouter'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Cpu, DollarSign, Newspaper, RefreshCw, ExternalLink, Sparkles, ChevronDown, ChevronUp } from 'lucide-react'
+import { Cpu, DollarSign, Newspaper, RefreshCw, ExternalLink, Sparkles, X } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { EventCluster, RawArticle } from '@/types'
 import { getVolatilityTier, VOLATILITY_COLORS } from '@/types'
@@ -465,36 +465,36 @@ function ArticleRow({ article }: { article: RawArticle }) {
   )
 }
 
-// ─── AI Summary panel ─────────────────────────────────────────────────────────
+// ─── AI Briefing button + modal ─────────────────────────────────────────────
 
 function SVAISummary({ clusters }: { clusters: EventCluster[] }) {
   const [analysis, setAnalysis]   = useState<string | null>(null)
   const [loading,  setLoading]    = useState(false)
-  const [expanded, setExpanded]   = useState(true)
-  const [topId,    setTopId]      = useState<string | null>(null)
   const [error,    setError]      = useState(false)
-
-  // Pick the highest-volatility SV cluster and deepdive it
-  useEffect(() => {
-    if (clusters.length === 0) return
-    const top = clusters[0]
-    if (top.id === topId) return   // already loaded for this cluster
-    setTopId(top.id)
-    setAnalysis(null)
-    setLoading(true)
-    setError(false)
-    api.clusters.deepdive(top.id)
-      .then(res => { setAnalysis(res.analysis); setLoading(false) })
-      .catch(() => { setError(true); setLoading(false) })
-  }, [clusters, topId])
+  const [modalOpen, setModalOpen] = useState(false)
 
   const topCluster = clusters[0]
 
+  // Only fetch when the user clicks the button — never on mount/reload
+  const generate = useCallback(() => {
+    if (!topCluster) return
+    setModalOpen(true)
+    if (analysis || loading) return
+    setLoading(true)
+    setError(false)
+    api.clusters.deepdive(topCluster.id)
+      .then(res => { setAnalysis(res.analysis); setLoading(false) })
+      .catch(() => { setError(true); setLoading(false) })
+  }, [topCluster, analysis, loading])
+
+  const closeModal = useCallback(() => setModalOpen(false), [])
+
   return (
-    <div className="border-b border-terminal-border flex-shrink-0 bg-terminal-surface/20">
+    <>
       <button
-        onClick={() => setExpanded(v => !v)}
-        className="w-full flex items-center gap-2 px-4 py-2 hover:bg-terminal-muted/20 transition-colors"
+        onClick={generate}
+        disabled={!topCluster}
+        className="w-full flex items-center gap-2 px-4 py-2 border-b border-terminal-border bg-terminal-surface/20 hover:bg-terminal-muted/20 transition-colors disabled:opacity-40"
       >
         <Sparkles size={10} className="text-terminal-accent flex-shrink-0" />
         <span className="text-[9px] font-mono tracking-widest text-terminal-accent">AI BRIEFING</span>
@@ -503,48 +503,77 @@ function SVAISummary({ clusters }: { clusters: EventCluster[] }) {
             — {topCluster.label}
           </span>
         )}
-        {loading && <span className="text-[7px] font-mono text-terminal-dim/40 animate-pulse ml-auto">generating…</span>}
-        {expanded ? <ChevronUp size={9} className="text-terminal-dim/40 flex-shrink-0 ml-auto" /> : <ChevronDown size={9} className="text-terminal-dim/40 flex-shrink-0 ml-auto" />}
+        <span className="text-[7px] font-mono text-terminal-dim/40 ml-auto flex-shrink-0">
+          CLICK TO GENERATE
+        </span>
       </button>
 
       <AnimatePresence>
-        {expanded && (
+        {modalOpen && (
           <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.18 }}
-            className="overflow-hidden"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+            onClick={closeModal}
           >
-            <div className="px-4 pb-3">
-              {loading && (
-                <div className="space-y-1.5 py-1">
-                  {[1, 2, 3, 4].map(i => (
-                    <div key={i} className="h-2 bg-terminal-surface rounded animate-pulse"
-                      style={{ width: `${[100, 92, 96, 78][i - 1]}%` }} />
-                  ))}
-                </div>
-              )}
-              {error && (
-                <p className="text-[9px] font-mono text-terminal-dim/40 italic py-1">
-                  Analysis unavailable — click a cluster for details.
-                </p>
-              )}
-              {analysis && (
-                <p className="text-[10px] font-mono text-terminal-dim/80 leading-relaxed whitespace-pre-wrap">
-                  {analysis}
-                </p>
-              )}
-              {!loading && !error && !analysis && clusters.length === 0 && (
-                <p className="text-[9px] font-mono text-terminal-dim/40 italic py-1">
-                  No active SV clusters to summarize.
-                </p>
-              )}
-            </div>
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="relative w-full max-w-2xl max-h-[80vh] mx-4 bg-terminal-bg border border-terminal-border rounded-sm shadow-2xl flex flex-col"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center gap-2 px-4 py-3 border-b border-terminal-border flex-shrink-0">
+                <Sparkles size={12} className="text-terminal-accent flex-shrink-0" />
+                <span className="text-[10px] font-mono tracking-widest text-terminal-accent">AI BRIEFING</span>
+                {topCluster && (
+                  <span className="text-[9px] font-mono text-terminal-dim/50 truncate flex-1 ml-1">
+                    — {topCluster.label}
+                  </span>
+                )}
+                <button
+                  onClick={closeModal}
+                  className="text-terminal-dim hover:text-terminal-text transition-colors flex-shrink-0"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="overflow-y-auto scrollbar-thin px-4 py-4 flex-1">
+                {loading && (
+                  <div className="space-y-2">
+                    {[1, 2, 3, 4, 5, 6].map(i => (
+                      <div key={i} className="h-3 bg-terminal-surface rounded animate-pulse"
+                        style={{ width: `${[100, 95, 88, 92, 78, 85][i - 1]}%` }} />
+                    ))}
+                  </div>
+                )}
+                {error && (
+                  <p className="text-[10px] font-mono text-terminal-dim/40 italic">
+                    Analysis unavailable. The AI service may be busy — try again in a moment.
+                  </p>
+                )}
+                {analysis && (
+                  <p className="text-[11px] font-mono text-terminal-text/80 leading-relaxed whitespace-pre-wrap">
+                    {analysis}
+                  </p>
+                )}
+                {!loading && !error && !analysis && (
+                  <p className="text-[10px] font-mono text-terminal-dim/40 italic">
+                    No briefing available.
+                  </p>
+                )}
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </>
   )
 }
 
