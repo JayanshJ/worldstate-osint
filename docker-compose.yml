@@ -136,6 +136,22 @@ services:
       retries: 3
       start_period: 10s
 
+  # ─── Cloudflare Tunnel (public domain access) ──────────────────────────────
+  # Outbound-only link to Cloudflare's edge so the site is publicly reachable
+  # on your domain WITHOUT router port forwarding. The app itself stays
+  # hosted entirely on this box; Cloudflare just proxies visitors in.
+  # Dormant until: COMPOSE_PROFILES=tunnel and CLOUDFLARE_TUNNEL_TOKEN are
+  # set in .env. Public hostname → service mapping is configured in the
+  # Cloudflare Zero Trust dashboard (point it at http://frontend:80).
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    profiles: ["tunnel"]
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:-placeholder}
+    depends_on:
+      frontend:
+        condition: service_healthy
+
   # ─── DB Backup (daily pg_dump) ────────────────────────────────────────────
   backup:
     image: postgres:16-alpine
